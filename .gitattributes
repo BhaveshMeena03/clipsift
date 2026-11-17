@@ -1,0 +1,4 @@
+# keep Windows line endings exactly as written, also in GitHub ZIP downloads
+*.bat -text
+*.ps1 -text
+*.ttf binary

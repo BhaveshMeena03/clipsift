@@ -1,0 +1,54 @@
+# Installing on Windows
+
+Tested target: Windows 10/11 64-bit, Ryzen 5 3600, RTX 4060, 16 GB RAM. The scripts were written for Windows but have not been run on a Windows machine yet; if a step fails, the log on screen says which one.
+
+## Needs
+
+- 64-bit Windows 10 or 11
+- An up-to-date NVIDIA driver (for GPU speech and NVENC). Without a usable GPU, ClipSift falls back to CPU, which is much slower.
+- About 8 GB free for the app and models, plus room for downloads and exports. A 9 hour 1080p60 VOD is roughly 10 to 30 GB; 4K is more.
+- Internet during setup.
+
+## Install
+
+1. Put the `clipsift` folder somewhere permanent, for example `C:\ClipSift` (avoid OneDrive-synced folders).
+2. Double-click **`Install.bat`**. It runs `setup\install.ps1`, which:
+   - downloads uv, Python 3.11.18, ffmpeg 9.0.2 and Deno 2.9.8, checking each against a pinned SHA-256;
+   - installs Python packages from `setup\requirements-windows.txt` (every package pinned and hash-checked), including NVIDIA's cuBLAS/cuDNN libraries for the speech model;
+   - downloads the audio event model and converts the two Hinglish speech models (`setup\convert_models.ps1`, which uses a temporary PyTorch environment and deletes it afterwards);
+   - puts a **ClipSift** shortcut on the desktop.
+3. First install takes a while (about 2 GB of packages and 2 GB of models). Running `Install.bat` again skips finished steps.
+
+Options: `setup\install.ps1 -DataDir D:\ClipSiftData` puts data and models on another drive. `-SkipModels` skips step 3's models.
+
+## Start
+
+Double-click the **ClipSift** shortcut (or `ClipSift.bat`). A small console window starts and the app opens in an Edge app window at `http://127.0.0.1:8765`.
+
+- Keep the console window open while processing. Closing it pauses jobs; they resume next start.
+- ClipSift keeps the PC awake while it is working (the screen can still turn off).
+- Only one copy runs at a time. Starting it again opens the existing window.
+
+## Data folder
+
+`%LOCALAPPDATA%\ClipSift` holds the database, work files, previews, downloads, exports (default), models, tools and logs. Settings > Export folder moves exports anywhere.
+
+## Updating
+
+Replace the `clipsift` folder contents (keep `.venv`), then run `Install.bat` again to pick up any new pinned packages.
+
+## Uninstalling
+
+Delete the `clipsift` folder, the desktop shortcut, and `%LOCALAPPDATA%\ClipSift` (this deletes downloads and default exports too; move exports first). If you set up CS2/Dota event feeds, delete `gamestate_integration_clipsift.cfg` from the game's cfg folder.
+
+## Troubleshooting
+
+| Symptom | What to do |
+|---|---|
+| Settings shows "CUDA devices for speech: 0" | Update the NVIDIA driver. ClipSift still works on CPU, slower. The log names the missing DLL if cuBLAS/cuDNN failed to load. |
+| "NVENC: no" | Driver too old or GPU busy; exports fall back to x264 on the CPU automatically. |
+| YouTube check says "needs Deno" | Run `Install.bat` again, or set the Deno path in Settings. |
+| YouTube says "bot check" or rate limit | Try later. ClipSift does not sign in or work around it. |
+| "ffmpeg missing" in the top bar | Run `Install.bat` again or set ffmpeg's path in Settings. |
+| Port 8765 busy | Another program uses it. ClipSift picks another port, but CS2/Dota event feeds expect 8765. |
+| Something else | Storage & logs shows the worker and server logs. Secrets are removed from logs. |

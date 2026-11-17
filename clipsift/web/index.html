@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipSift</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">ClipSift</div>
+  <div id="sysline" class="muted small"></div>
+  <div id="workerdot" class="dot" title="worker"></div>
+</header>
+<div class="shell">
+  <nav id="nav">
+    <a data-view="add"><b>1</b> Add recordings</a>
+    <a data-view="layout"><b>2</b> Layout</a>
+    <a data-view="process"><b>3</b> Process</a>
+    <a data-view="review"><b>4</b> Review</a>
+    <a data-view="export"><b>5</b> Export</a>
+    <hr>
+    <a data-view="refs">References</a>
+    <a data-view="settings">Settings</a>
+    <a data-view="storage">Storage &amp; logs</a>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="modal" class="modal hidden"><div class="modal-box" id="modalbox"></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
