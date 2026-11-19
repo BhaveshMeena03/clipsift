@@ -1,10 +1,13 @@
 """Build a labelled synthetic 'stream' for pipeline tests.
 
 It checks mechanics (timestamps, OCR of a HUD, speech, export), not real gameplay understanding.
-Speech uses macOS 'say' when present; elsewhere tests that need speech are skipped."""
+Speech uses macOS 'say' or the Windows speech engine; where neither works, speech tests are skipped."""
 import json
+import os
 import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -12,16 +15,47 @@ from PIL import Image, ImageDraw, ImageFont
 FONT = Path(__file__).resolve().parents[1] / "clipsift" / "assets" / "fonts" / "Poppins-Bold.ttf"
 
 
+_sapi_ok: bool | None = None
+_SAPI = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+         "$s.SetOutputToWaveFile($env:CS_TTS_OUT); $s.Speak($env:CS_TTS_TEXT); $s.Dispose()")
+
+
+def _sapi_say(text: str, wav: Path) -> None:
+    """Windows' built-in speech engine. Text and path go through env vars, no quoting issues."""
+    env = dict(os.environ, CS_TTS_OUT=str(wav), CS_TTS_TEXT=text)
+    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _SAPI], env=env, check=True,
+                   capture_output=True, timeout=120)
+
+
 def have_tts() -> bool:
-    return shutil.which("say") is not None
+    global _sapi_ok
+    if shutil.which("say"):
+        return True
+    if sys.platform != "win32":
+        return False
+    if _sapi_ok is None:
+        try:
+            probe = Path(tempfile.mkdtemp()) / "probe.wav"
+            _sapi_say("test", probe)
+            _sapi_ok = probe.is_file() and probe.stat().st_size > 2000
+        except Exception:
+            _sapi_ok = False
+    return _sapi_ok
 
 
-def tts(text: str, voice: str, out: Path) -> Path:
-    aiff = out.with_suffix(".aiff")
-    subprocess.run(["say", "-v", voice, "-o", str(aiff), text], check=True)
-    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(aiff), "-ar", "48000", "-ac", "1",
-                    str(out)], check=True)
-    aiff.unlink()
+def tts(text: str, voice: str, out: Path, fallback: str | None = None) -> Path:
+    """macOS 'say' with the named voice, or the default Windows voice. Windows has no Hindi voice by
+    default, so Hindi lines pass a romanized fallback."""
+    raw = out.with_name(out.stem + ".raw" + (".aiff" if shutil.which("say") else ".wav"))
+    if shutil.which("say"):
+        subprocess.run(["say", "-v", voice, "-o", str(raw), text], check=True)
+    else:
+        _sapi_say(fallback or text, raw)
+    # trim leading silence so the speech starts exactly where the test puts it
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-af",
+                    "silenceremove=start_periods=1:start_threshold=-50dB", "-ar", "48000", "-ac", "1", str(out)],
+                   check=True)
+    raw.unlink()
     return out
 
 
@@ -62,7 +96,8 @@ def build(out_dir: Path, duration: float = 240.0, extra_tracks: bool = False) ->
     if have_tts():
         speech = [
             (40.0, tts("bro what are you doing? hahaha. oh my god, why would you jump there", "Rishi", assets / "s1.wav"), 0.0),
-            (46.0, tts("भाई क्या कर रहा है, पागल है क्या", "Lekha", assets / "s2.wav"), 0.0),
+            (46.0, tts("भाई क्या कर रहा है, पागल है क्या", "Lekha", assets / "s2.wav",
+                       fallback="bhai kya kar raha hai, pagal hai kya"), 0.0),
             (190.0, tts("testing the microphone one two three, testing testing", "Rishi", assets / "s3.wav"), 9.0),
         ]
     kf1 = killfeed_png([("fortysevenfrags", "Raze_main")], assets / "kf1.png")

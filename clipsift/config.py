@@ -55,7 +55,10 @@ class Paths:
 
     @property
     def models(self) -> Path:
-        return self.home / "models"
+        # CLIPSIFT_MODELS lets tests and tools share one models folder without symlinks
+        # (Windows needs admin rights for those)
+        env = os.environ.get("CLIPSIFT_MODELS")
+        return Path(env) if env else self.home / "models"
 
     @property
     def logs(self) -> Path:

@@ -3,15 +3,16 @@
 ## Test suite
 
 ```
-.venv\Scripts\python -m pip install pytest==9.2.0 httpx==0.28.1
+data\tools\uv\uv.exe pip install --python .venv\Scripts\python.exe --require-hashes -r setup\requirements-dev-windows.txt
+set PYTHONPATH=%CD%
 .venv\Scripts\python -m pytest
 ```
 
 Unit tests (fast, no models): timestamps, chunk planning and stitching (every word kept exactly once across boundaries), caption line building (no overlaps, synced to word starts, edits survive trims), Roman Hindi conversion, profanity masking and mute spans, glossary merging, candidate windows and duplicate merging, HUD parsing (kill vs death, OCR noise, banner words), game event diffing and clock alignment, render graphs (crop/fit/full/vertical/insets, muting only voice tracks), job queue (exclusive claims, crash limit), checkpoint invalidation, API security and validation, CSV metrics parsing, preference maths (missing is not zero, age adjustment), YouTube link and error handling, download job with a fake yt-dlp.
 
-Media tests (real ffmpeg, PyAV, OCR, speech and audio models; need `CLIPSIFT_TEST_MODELS` pointing at a models folder): audio/frame timestamp accuracy, the labelled synthetic sample, resume skips finished work, cancel then resume gives identical candidates, caption pixels appear exactly while their line plays, swears masked in captions and silent in the exported audio while the rest of the reaction stays, source file bytes unchanged, vertical sources not reframed, preview caching, disk-full refusal, corrupt and silent files, a 22 minute recording whose worker is killed with SIGKILL mid-transcription and resumed, cancelling during video decoding (this once deadlocked inside PyAV; the test hung 1 run in 3 before the fix and 0 in 16 after), reference caption-style reading.
+Media tests (real ffmpeg, PyAV, OCR, speech and audio models; found automatically in the app's `data` folder, or set `CLIPSIFT_TEST_MODELS`): audio/frame timestamp accuracy, the labelled synthetic sample, resume skips finished work, cancel then resume gives identical candidates, caption pixels appear exactly while their line plays, swears masked in captions and silent in the exported audio while the rest of the reaction stays, source file bytes unchanged, vertical sources not reframed, preview caching, disk-full refusal, corrupt and silent files, a 22 minute recording whose worker is killed with SIGKILL mid-transcription and resumed, cancelling during video decoding (this once deadlocked inside PyAV; the test hung 1 run in 3 before the fix and 0 in 16 after), reference caption-style reading.
 
-Last run on macOS (M3 Pro): 263 tests passed in about 3 minutes, including simulated RTX 40, GTX 10, multi-GPU, AMD, Intel and no-GPU setups. The speech tests use macOS text-to-speech to create voices and skip elsewhere.
+Last run on macOS (M3 Pro): 266 tests passed in about 3 minutes, including simulated RTX 40, GTX 10, multi-GPU, AMD, Intel and no-GPU setups. The speech tests make voices with macOS or Windows text-to-speech and skip where neither works.
 
 ## Checking detection on your own footage (Milestone 2)
 

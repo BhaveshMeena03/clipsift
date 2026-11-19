@@ -1,13 +1,36 @@
 import os
 import shutil
 import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 
 import pytest
 
-MODELS = Path(os.environ.get("CLIPSIFT_TEST_MODELS", Path.home() / ".clipsift-dev" / "models"))
-SYNTH_DIR = Path(os.environ.get("CLIPSIFT_TEST_MEDIA", "/tmp/clipsift_synth"))
+from clipsift import models as _models
+from clipsift.config import Paths as _Paths
+
+_APP = _Paths()  # the installed app's data folder (data\ next to the app on Windows)
+
+
+def _pick_models() -> Path:
+    if os.environ.get("CLIPSIFT_TEST_MODELS"):
+        return Path(os.environ["CLIPSIFT_TEST_MODELS"])
+    for cand in (Path.home() / ".clipsift-dev" / "models", _APP.home / "models"):
+        if _models.whisper_ready(cand, "hinglish-swift"):
+            return cand
+    return _APP.home / "models"
+
+
+MODELS = _pick_models()
+os.environ["CLIPSIFT_MODELS"] = str(MODELS)  # every test home and worker uses these models
+SYNTH_DIR = Path(os.environ.get("CLIPSIFT_TEST_MEDIA", Path(tempfile.gettempdir()) / "clipsift_synth"))
+
+# setup puts ffmpeg in the data folder, not on PATH; tests call it by name
+_ff_bin = _APP.tools / "ffmpeg" / "bin"
+if (_ff_bin / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")).is_file():
+    os.environ["PATH"] = str(_ff_bin) + os.pathsep + os.environ.get("PATH", "")
 
 
 def have_ffmpeg() -> bool:
@@ -15,8 +38,7 @@ def have_ffmpeg() -> bool:
 
 
 def have_models() -> bool:
-    from clipsift import models
-    return models.whisper_ready(MODELS, "hinglish-swift") and models.tagger_ready(MODELS)
+    return _models.whisper_ready(MODELS, "hinglish-swift") and _models.tagger_ready(MODELS)
 
 
 needs_media = pytest.mark.skipif(not have_ffmpeg(), reason="ffmpeg not installed")
@@ -28,8 +50,6 @@ def make_home(root: Path, **settings):
     from clipsift.db import DB
     home = root / "home"
     home.mkdir(parents=True, exist_ok=True)
-    if not (home / "models").exists():
-        os.symlink(MODELS, home / "models", target_is_directory=True)
     paths = Paths(home).ensure()
     db = DB(paths.db)
     base = {"asr_device": "cpu", "asr_model_cpu": "hinglish-swift", "max_candidates": 10}

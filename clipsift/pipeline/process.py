@@ -107,6 +107,7 @@ def postprocess_transcript(segs: list[dict], speech: list, glossary: Glossary) -
         for w in seg["words"]:
             w["seg"] = seg["id"]
             words.append(w)
+    words.sort(key=lambda w: (w["start"], w["end"]))  # Whisper segments can overlap slightly
     return {"segments": segs, "words": words}
 
 

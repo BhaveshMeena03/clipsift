@@ -270,6 +270,9 @@ def segment_status(seg: dict, speech_overlap: float | None = None) -> str:
         return "dropped"
     if "repetitive" in flags and seg.get("avg_logprob", 0) < -0.6:
         return "dropped"
+    # tiny, low-confidence bits ("Is.", "Haan haan.") are what Whisper writes over noise at the end of speech
+    if "start" in seg and "end" in seg and seg["end"] - seg["start"] < 0.35 and seg.get("avg_logprob", 0) < -0.8:
+        return "dropped"
     words = seg.get("words") or []
     low = [w for w in words if w.get("prob") is not None and w["prob"] < 0.45]
     if flags or (words and len(low) / len(words) > 0.25):

@@ -25,6 +25,7 @@ While you play CS2 or Dota 2 with ClipSift open, the games' official event feed 
 - Speed: [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
 - Tests and checking detection on your own footage: [docs/TESTING.md](docs/TESTING.md)
 - How it is built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Picking up development (state, rules, next steps): [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
 ## Status, honestly
 

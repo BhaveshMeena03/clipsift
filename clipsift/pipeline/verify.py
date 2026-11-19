@@ -31,6 +31,22 @@ def needs_check(seg: dict) -> bool:
     return any(w.get("prob") is not None and w["prob"] < LOW for w in seg.get("words", []))
 
 
+def alt_words_for(seg: dict, alt_segs: list[dict]) -> list[dict]:
+    """Words from the second listen that belong to this line: centred inside it and not stretched
+    over seconds of silence (a sign the model is guessing)."""
+    a, b = seg["start"] - 0.3, seg["end"] + 0.3
+    longest = max(1.5, 2 * (seg["end"] - seg["start"]))
+    out = []
+    for s in alt_segs:
+        if "hallucination_phrase" in s.get("flags", []):
+            continue
+        for w in s.get("words", []):
+            mid = (w["start"] + w["end"]) / 2
+            if a <= mid <= b and w["end"] - w["start"] <= longest:
+                out.append(w)
+    return out
+
+
 def decide(seg: dict, alt_words: list[dict]) -> dict:
     orig_p = _mean_p(seg.get("words", []))
     alt_text = "".join(w["text"] for w in alt_words).strip()
@@ -79,8 +95,7 @@ def verify_windows(ctx, path, transcript: dict, windows: list[tuple[float, float
                 prompt = (glossary.prompt() + ". " + context)[-400:].strip(". ")
                 alt_segs = tr.transcribe(pcm, offset=a0, language_mode=lang, prompt=prompt, beam_size=8, vad=False,
                                          cancel=ctx.cancelled, seg_prefix=seg["id"] + "v")
-                alt_words = [w for s in alt_segs if "hallucination_phrase" not in s["flags"] for w in s["words"]
-                             if seg["start"] - 0.3 <= w["start"] <= seg["end"] + 0.3]
+                alt_words = alt_words_for(seg, alt_segs)
                 res = decide(seg, alt_words)
                 atomic_write_json(f, res)
             apply_result(seg, res, glossary)
@@ -89,7 +104,9 @@ def verify_windows(ctx, path, transcript: dict, windows: list[tuple[float, float
     finally:
         if own is not None:
             own.close()
-    transcript["words"] = [dict(w, seg=s["id"]) for s in segs for w in s.get("words", [])]
+    segs.sort(key=lambda x: (x["start"], x["end"]))
+    transcript["words"] = sorted((dict(w, seg=s["id"]) for s in segs for w in s.get("words", [])),
+                                 key=lambda w: (w["start"], w["end"]))
     return transcript
 
 

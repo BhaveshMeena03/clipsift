@@ -285,3 +285,19 @@ def test_hooks_are_grounded():
 
 def test_no_hook_without_grounding():
     assert hook_options([], []) == []
+
+
+def test_tiny_low_confidence_bits_are_dropped():
+    assert segment_status({"start": 599.33, "end": 599.47, "avg_logprob": -1.1, "flags": ["low_logprob"],
+                           "words": [{"prob": 0.2}]}, 1.0) == "dropped"
+    assert segment_status({"start": 10.0, "end": 10.3, "avg_logprob": -0.2, "flags": [],
+                           "words": [{"prob": 0.95}]}, 1.0) == "ok"   # a clear short "yes!" stays
+
+
+def test_second_listen_ignores_stretched_or_outside_words():
+    from clipsift.pipeline.verify import alt_words_for
+    seg = {"start": 599.33, "end": 599.47}
+    alt = [{"flags": [], "words": [{"text": "Haan", "start": 599.49, "end": 602.07},      # 2.6 s word: a guess
+                                   {"text": "is", "start": 599.34, "end": 599.46},        # inside: kept
+                                   {"text": "later", "start": 601.0, "end": 601.3}]}]     # outside: not this line
+    assert [w["text"] for w in alt_words_for(seg, alt)] == ["is"]
