@@ -170,3 +170,18 @@ def test_stage_dir_keeps_and_wipes(tmp_path):
     d = stage_dir(tmp_path, "s", {"a": [1, 3]})
     assert not (d / "chunk_0000.json").exists()
     assert json.loads((d / "_params.json").read_text()) == {"a": [1, 3]}
+
+
+# ---------- where data lives ----------
+
+def test_windows_data_lives_next_to_the_app(tmp_path, monkeypatch):
+    from clipsift.config import default_home
+    monkeypatch.delenv("CLIPSIFT_HOME", raising=False)
+    app = tmp_path / "D_drive" / "ClipSift"
+    app.mkdir(parents=True)
+    assert default_home(is_windows=True, app_root=app) == app / "data"
+    # setup -DataDir remembers the choice; PowerShell 5.1 may write a BOM
+    (app / "data_dir.txt").write_bytes("\ufeffE:\\ClipSiftData\r\n".encode("utf-8"))
+    assert str(default_home(is_windows=True, app_root=app)) == "E:\\ClipSiftData"
+    monkeypatch.setenv("CLIPSIFT_HOME", str(tmp_path / "env_home"))
+    assert default_home(is_windows=True, app_root=app) == (tmp_path / "env_home").resolve()

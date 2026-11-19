@@ -26,7 +26,7 @@ Every hardware encoder is proven with a short test encode before use, and if one
 
 ## Install
 
-1. Put the `clipsift` folder somewhere permanent, for example `C:\ClipSift` (avoid OneDrive-synced folders). A GitHub ZIP unzips to `clipsift-main`; rename or move it.
+1. Put the `clipsift` folder on any drive with room, for example `D:\ClipSift` (avoid OneDrive-synced folders and Program Files). A GitHub ZIP unzips to `clipsift-main`; rename or move it. Everything ClipSift stores goes inside this folder.
 2. Double-click **`Install.bat`**. It runs `setup\install.ps1`, which:
    - downloads uv, Python 3.11.18, ffmpeg 9.0.2 and Deno 2.9.8, checking each against a pinned SHA-256;
    - installs Python packages from `setup\requirements-windows.txt` (every package pinned and hash-checked), including NVIDIA's cuBLAS/cuDNN libraries for the speech model;
@@ -34,7 +34,7 @@ Every hardware encoder is proven with a short test encode before use, and if one
    - puts a **ClipSift** shortcut on the desktop.
 3. First install takes a while (about 2 GB of packages and 2 GB of models). Running `Install.bat` again skips finished steps.
 
-Options: `setup\install.ps1 -DataDir D:\ClipSiftData` puts data and models on another drive. `-SkipModels` skips step 3's models.
+Options: `setup\install.ps1 -DataDir E:\ClipSiftData` keeps data and models somewhere other than the app folder (remembered in `data_dir.txt`). `-SkipModels` skips step 3's models.
 
 ## Start
 
@@ -46,15 +46,15 @@ Double-click the **ClipSift** shortcut (or `ClipSift.bat`). A small console wind
 
 ## Data folder
 
-`%LOCALAPPDATA%\ClipSift` holds the database, work files, previews, downloads, exports (default), models, tools and logs. Settings > Export folder moves exports anywhere.
+`data\` inside the app folder (for example `D:\ClipSift\data`) holds the database, work files, previews, downloads, exports (default), models, tools and logs. Nothing goes to the C: drive except the desktop shortcut. Settings > Export folder moves exports anywhere.
 
 ## Updating
 
-Replace the `clipsift` folder contents (keep `.venv`), then run `Install.bat` again to pick up any new pinned packages.
+Copy the new files over the app folder (keep `.venv` and `data`), or `git pull`, then run `Install.bat` again to pick up any new pinned packages.
 
 ## Uninstalling
 
-Delete the `clipsift` folder, the desktop shortcut, and `%LOCALAPPDATA%\ClipSift` (this deletes downloads and default exports too; move exports first). If you set up CS2/Dota event feeds, delete `gamestate_integration_clipsift.cfg` from the game's cfg folder.
+Delete the app folder (this deletes its `data` folder with downloads and default exports too; move exports first) and the desktop shortcut. If you set up CS2/Dota event feeds, delete `gamestate_integration_clipsift.cfg` from the game's cfg folder.
 
 ## Troubleshooting
 

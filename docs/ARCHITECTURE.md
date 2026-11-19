@@ -49,7 +49,7 @@ Every piece of evidence carries a tier:
 
 1080x1920 H.264/AAC MP4. Horizontal sources use a saved layout profile (facecam on top, gameplay in the middle, branding panel at the bottom) with crop, fit or full-frame gameplay framing and optional HUD insets. Vertical sources keep their composition and only get captions and hook text.
 
-## Data folders (`%LOCALAPPDATA%\ClipSift`)
+## Data folders (`data\` inside the app folder on Windows)
 
 ```
 clipsift.db        jobs, sources, candidates, decisions, layouts, references, settings

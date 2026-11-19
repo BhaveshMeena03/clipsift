@@ -9,12 +9,23 @@ PyTorch, so it runs in a separate temporary environment that is deleted afterwar
 Both are pinned to an exact commit (see clipsift/models.py).
 #>
 param(
-  [string]$DataDir = "$env:LOCALAPPDATA\ClipSift",
+  [string]$DataDir = "",
   [string[]]$Models = @("hinglish-apex", "hinglish-swift")
 )
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $env:PYTHONPATH = $Root
+# Data (models, downloads, exports, tools) lives in data\ next to the app, on whatever drive
+# it was unzipped to. -DataDir picks another folder and is remembered in data_dir.txt.
+$DataFile = Join-Path $Root "data_dir.txt"
+if ($DataDir) {
+  $DataDir = [System.IO.Path]::GetFullPath($DataDir)
+  [System.IO.File]::WriteAllText($DataFile, $DataDir)
+} elseif (Test-Path $DataFile) {
+  $DataDir = [System.IO.File]::ReadAllText($DataFile).Trim()
+} else {
+  $DataDir = Join-Path $Root "data"
+}
 $Tools = Join-Path $DataDir "tools"
 $uv = Join-Path $Tools "uv\uv.exe"
 $py = Join-Path $Root ".venv\Scripts\python.exe"

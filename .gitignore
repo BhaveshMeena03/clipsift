@@ -7,3 +7,5 @@ __pycache__/
 .DS_Store
 *.clipsift-eval.md
 *.clipsift-eval.json
+data/
+data_dir.txt

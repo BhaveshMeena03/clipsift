@@ -152,7 +152,7 @@ def open_window(url: str) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="clipsift")
-    ap.add_argument("--home", default=None, help="data folder (default %%LOCALAPPDATA%%\\ClipSift)")
+    ap.add_argument("--home", default=None, help="data folder (default: data next to the app)")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--no-window", action="store_true")
     ap.add_argument("--no-worker", action="store_true")

@@ -7,15 +7,25 @@ PKG_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = PKG_DIR / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"
 IS_WINDOWS = sys.platform == "win32"
+APP_ROOT = PKG_DIR.parent
+DATA_DIR_FILE = "data_dir.txt"
 
 
-def default_home() -> Path:
+def default_home(is_windows: bool = IS_WINDOWS, app_root: Path = APP_ROOT) -> Path:
+    """On Windows everything lives next to the app (any drive it was unzipped to), in a data folder.
+    Setup's -DataDir writes data_dir.txt so the launcher finds a folder chosen elsewhere."""
     env = os.environ.get("CLIPSIFT_HOME")
     if env:
         return Path(env).expanduser().resolve()
-    if IS_WINDOWS:
-        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(base) / APP_NAME
+    if is_windows:
+        try:
+            # utf-8-sig: Windows PowerShell 5.1 writes a BOM
+            custom = (Path(app_root) / DATA_DIR_FILE).read_text(encoding="utf-8-sig").strip()
+            if custom:
+                return Path(custom)
+        except OSError:
+            pass
+        return Path(app_root) / "data"
     return Path.home() / ".clipsift"
 
 

@@ -12,7 +12,7 @@ Downloads (all pinned, each checked against a SHA-256 before use):
 Run again any time: finished steps are skipped.
 #>
 param(
-  [string]$DataDir = "$env:LOCALAPPDATA\ClipSift",
+  [string]$DataDir = "",
   [switch]$SkipModels,
   [switch]$NoShortcut
 )
@@ -21,6 +21,18 @@ $ProgressPreference = "SilentlyContinue"   # Invoke-WebRequest is very slow with
 
 $Root = Split-Path -Parent $PSScriptRoot
 $env:PYTHONPATH = $Root
+# Data (models, downloads, exports, tools) lives in data\ next to the app, on whatever drive
+# it was unzipped to. -DataDir picks another folder and is remembered in data_dir.txt.
+$DataFile = Join-Path $Root "data_dir.txt"
+if ($DataDir) {
+  $DataDir = [System.IO.Path]::GetFullPath($DataDir)
+  [System.IO.File]::WriteAllText($DataFile, $DataDir)
+} elseif (Test-Path $DataFile) {
+  $DataDir = [System.IO.File]::ReadAllText($DataFile).Trim()
+} else {
+  $DataDir = Join-Path $Root "data"
+}
+Write-Host "ClipSift data folder: $DataDir"
 $Tools = Join-Path $DataDir "tools"
 $Cache = Join-Path $Tools "_downloads"
 New-Item -ItemType Directory -Force -Path $Tools, $Cache | Out-Null
