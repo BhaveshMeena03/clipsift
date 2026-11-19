@@ -94,7 +94,7 @@ def create_app(paths: Paths, port_ref: dict | None = None, token: str | None = N
         from ..ingest.youtube import deno_path
         info.update({
             "version": __version__, "home": str(paths.home), "ffmpeg": ff, "deno": deno_path(paths, st),
-            "nvenc": ffmpeg.nvenc_available() if ff else False,
+            "hw_encoder": ffmpeg.hw_encoder_label() if ff else None,
             "disk_free": human_bytes(free_bytes(paths.home)),
             "models": [{"name": k, **{x: v.get(x) for x in ("mb", "license", "note", "repo", "convert")},
                         "ready": models.whisper_ready(paths.models, k)} for k, v in models.WHISPER.items()],

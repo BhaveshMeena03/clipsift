@@ -11,7 +11,7 @@ Unit tests (fast, no models): timestamps, chunk planning and stitching (every wo
 
 Media tests (real ffmpeg, PyAV, OCR, speech and audio models; need `CLIPSIFT_TEST_MODELS` pointing at a models folder): audio/frame timestamp accuracy, the labelled synthetic sample, resume skips finished work, cancel then resume gives identical candidates, caption pixels appear exactly while their line plays, swears masked in captions and silent in the exported audio while the rest of the reaction stays, source file bytes unchanged, vertical sources not reframed, preview caching, disk-full refusal, corrupt and silent files, a 22 minute recording whose worker is killed with SIGKILL mid-transcription and resumed, cancelling during video decoding (this once deadlocked inside PyAV; the test hung 1 run in 3 before the fix and 0 in 16 after), reference caption-style reading.
 
-Last run on macOS (M3 Pro): 245 tests passed in about 3 minutes. The speech tests use macOS text-to-speech to create voices and skip elsewhere.
+Last run on macOS (M3 Pro): 263 tests passed in about 3 minutes, including simulated RTX 40, GTX 10, multi-GPU, AMD, Intel and no-GPU setups. The speech tests use macOS text-to-speech to create voices and skip elsewhere.
 
 ## Checking detection on your own footage (Milestone 2)
 

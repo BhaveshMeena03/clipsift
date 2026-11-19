@@ -31,7 +31,7 @@ While you play CS2 or Dota 2 with ClipSift open, the games' official event feed 
 | Area | State |
 |---|---|
 | Pipeline, captions, export, resume, cancel | Working, covered by unit tests and end-to-end media tests on macOS |
-| Windows install scripts, CUDA speech, NVENC export | Written for Windows, **not yet run on Windows** (no Windows machine was available) |
+| Windows install scripts, CUDA speech, hardware export (NVENC / AMD / Intel) | Written for Windows and picks what each PC supports; **not yet run on Windows** (no Windows machine was available) |
 | Detection quality on real gameplay | **Unverified.** Only checked on a synthetic labelled sample. Use `python -m clipsift.eval` on your own labelled footage |
 | CS2/Valorant/Wardogs HUD regions | Default positions are guesses; correct them on the Layout screen |
 | Instagram | CSV export and the official API are supported; public scraping is best effort and often blocked |

@@ -12,11 +12,11 @@
 
 The synthetic stream has very little speech, so its transcription time says nothing about a real stream. Speech time dominates on real streams.
 
-## Not measured: RTX 4060 + Ryzen 5 3600
+## Not measured: RTX 4070 Ti / RTX 4060 PCs
 
-No Windows/NVIDIA machine was available. Rough expectations, **estimates only**:
+No Windows/NVIDIA machine was available. Rough expectations, **estimates only** (a 4070 Ti will be faster than a 4060; both have plenty of memory for the default model):
 
-- Speech (hinglish-apex, float16 on the 4060): tens of times faster than real time. For a 9 hour stream with 4 to 5 hours of speech, roughly 10 to 30 minutes.
+- Speech (hinglish-apex, float16 on an RTX 40 card): tens of times faster than real time. For a 9 hour stream with 4 to 5 hours of speech, roughly 10 to 30 minutes.
 - Video scan: depends on keyframe spacing. With 2 s keyframes it decodes about 16k frames for 9 hours (minutes). With sparse keyframes it decodes everything at 1 fps sampling, which on a Ryzen 5 3600 is roughly 1 to 2 hours for 1080p60. Kill feed OCR adds time only when the feed region changes.
 - Whole 9 hour stream overnight: likely 1 to 3 hours on GPU, much longer on CPU only.
 - Export with NVENC: a few seconds to tens of seconds per clip.

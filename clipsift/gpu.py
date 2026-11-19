@@ -9,6 +9,9 @@ from .config import IS_WINDOWS
 
 log = logging.getLogger(__name__)
 _dll_done = False
+# CUDA's default order is "fastest first"; nvidia-smi lists by PCI bus. Make them agree so the
+# card we measure is the card we use on multi-GPU PCs.
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 
 
 def setup_cuda_dlls() -> list[str]:
@@ -41,7 +44,7 @@ def nvidia_smi() -> list[dict]:
         return []
     try:
         kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
-        r = subprocess.run([exe, "--query-gpu=name,memory.total,memory.free,driver_version",
+        r = subprocess.run([exe, "--query-gpu=index,name,memory.total,memory.free,driver_version",
                             "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=15, **kw)
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -50,10 +53,10 @@ def nvidia_smi() -> list[dict]:
     gpus = []
     for line in r.stdout.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) >= 3:
+        if len(parts) >= 4:
             try:
-                gpus.append({"name": parts[0], "total_mb": int(float(parts[1])), "free_mb": int(float(parts[2])),
-                             "driver": parts[3] if len(parts) > 3 else ""})
+                gpus.append({"index": int(parts[0]), "name": parts[1], "total_mb": int(float(parts[2])),
+                             "free_mb": int(float(parts[3])), "driver": parts[4] if len(parts) > 4 else ""})
             except ValueError:
                 continue
     return gpus
@@ -67,6 +70,17 @@ def cuda_device_count() -> int:
     except Exception as e:
         log.info("ctranslate2 CUDA check failed: %s", e)
         return 0
+
+
+def cuda_compute_types(device_index: int = 0) -> set[str]:
+    """What the speech runtime can do on this card, e.g. no float16 on GTX 10-series."""
+    setup_cuda_dlls()
+    try:
+        import ctranslate2
+        return set(ctranslate2.get_supported_compute_types("cuda", device_index))
+    except Exception as e:
+        log.info("could not read CUDA compute types: %s", e)
+        return set()
 
 
 def system_info() -> dict:

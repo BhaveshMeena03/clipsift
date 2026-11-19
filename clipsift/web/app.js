@@ -719,7 +719,7 @@ async function viewSettings() {
   $("#main").innerHTML = `<h2>Settings</h2>
     <div class="card"><h3 style="margin-top:0">This PC</h3><div class="small">
       GPU: ${sys.gpus.length ? h(sys.gpus.map((g) => `${g.name} (${g.free_mb} of ${g.total_mb} MB free)`).join(", ")) : "no NVIDIA GPU found"} · CUDA devices for speech: ${sys.cuda_devices}
-      · RAM free ${sys.ram_free_mb} MB · NVENC: ${sys.nvenc ? "yes" : "no"} · ffmpeg: ${sys.ffmpeg ? "found" : `<b style="color:var(--bad)">missing</b>`} · Deno (YouTube): ${sys.deno ? "found" : `<b style="color:var(--warn)">missing</b>`} · free disk ${h(sys.disk_free)}</div></div>
+      · RAM free ${sys.ram_free_mb} MB · Video encoder: ${h(sys.hw_encoder || "x264 on CPU (no hardware encoder found)")} · ffmpeg: ${sys.ffmpeg ? "found" : `<b style="color:var(--bad)">missing</b>`} · Deno (YouTube): ${sys.deno ? "found" : `<b style="color:var(--warn)">missing</b>`} · free disk ${h(sys.disk_free)}</div></div>
     <div class="card"><div class="kv">
       <label>Creator name</label><input data-s="creator_name" value="${h(st.creator_name)}">
       <label>In-game names</label><input data-s="ingame_names" data-list="1" value="${h((st.ingame_names || []).join(", "))}" title="comma separated; used to read your kills in the kill feed">
@@ -729,7 +729,7 @@ async function viewSettings() {
       <label>CPU speech model</label><select data-s="asr_model_cpu">${sys.models.map((m) => `<option value="${m.name}">${h(m.name)}</option>`).join("")}</select>
       <label>Download quality</label><select data-s="download_quality"><option value="best">Best available</option><option value="1080">1080p</option><option value="720">720p</option></select>
       <label>Export quality</label><select data-s="export_quality"><option value="max">Maximum (slower)</option><option value="fast">Fast</option></select>
-      <label>Encoder</label><select data-s="encoder"><option value="auto">Auto (NVENC if it works)</option><option value="nvenc">NVENC</option><option value="x264">x264 (CPU)</option></select>
+      <label>Encoder</label><select data-s="encoder"><option value="auto">Auto (best hardware encoder that works)</option><option value="nvenc">NVIDIA NVENC</option><option value="amf">AMD AMF</option><option value="qsv">Intel Quick Sync</option><option value="x264">x264 (CPU)</option></select>
       <label>Captions on by default</label><input type="checkbox" data-s="captions_on" ${st.captions_on ? "checked" : ""}>
       <label>Words per caption</label><input type="number" min="1" max="8" data-s="caption_words_max" value="${st.caption_words_max}">
       <label>UPPERCASE captions</label><input type="checkbox" data-s="caption_upper" ${st.caption_upper ? "checked" : ""}>
@@ -822,7 +822,7 @@ window.closeModal = closeModal;
   try {
     [S.games, S.layouts, S.settings] = await Promise.all([api("/api/games"), api("/api/layouts"), api("/api/settings")]);
     api("/api/system").then((s) => {
-      $("#sysline").textContent = (s.gpus.length ? s.gpus[0].name + " · " : "No NVIDIA GPU · ") + (s.nvenc ? "NVENC · " : "") + "free disk " + s.disk_free
+      $("#sysline").textContent = (s.gpus.length ? s.gpus[0].name + " · " : "No NVIDIA GPU · ") + (s.hw_encoder ? s.hw_encoder + " · " : "") + "free disk " + s.disk_free
         + (s.ffmpeg ? "" : " · ffmpeg missing!");
     }).catch(() => {});
   } catch (e) { toast("Could not reach ClipSift: " + e.message, true); }

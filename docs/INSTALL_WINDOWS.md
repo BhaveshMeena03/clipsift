@@ -1,17 +1,32 @@
 # Installing on Windows
 
-Tested target: Windows 10/11 64-bit, Ryzen 5 3600, RTX 4060, 16 GB RAM. The scripts were written for Windows but have not been run on a Windows machine yet; if a step fails, the log on screen says which one.
+Built for Windows 10/11 64-bit PCs like an RTX 4070 Ti or RTX 4060 with 16 GB RAM. The scripts were written for Windows but had not been run on a Windows machine when this was written; if a step fails, the log on screen says which one.
+
+## What runs where
+
+ClipSift checks the PC when it starts a job and uses the best option that actually works, so the same install works on different PCs.
+
+| Hardware | Speech to text | Export encoder |
+|---|---|---|
+| NVIDIA RTX 20/30/40 series (4070 Ti, 4060, ...) | GPU, float16 (int8 if the card is busy) | NVENC, max quality |
+| NVIDIA GTX 10/16 series | GPU, int8 (these cards have no fast float16) | NVENC (plain settings if the driver rejects the max ones) |
+| NVIDIA RTX 50 series | GPU if the CUDA libraries support it, otherwise CPU (says which) | NVENC |
+| AMD Radeon | CPU (slower; no AMD support in the speech runtime on Windows) | AMD AMF |
+| Intel Arc / Intel graphics | CPU | Intel Quick Sync |
+| No GPU | CPU | x264 on the CPU |
+
+Every hardware encoder is proven with a short test encode before use, and if one still fails on a real clip the export retries with the next one, ending with x264. With two NVIDIA cards, speech runs on the one with the most free memory. The installer prints what it found at the end ("Speech will run on: ...", "Video encoder: ...").
 
 ## Needs
 
 - 64-bit Windows 10 or 11
-- An up-to-date NVIDIA driver (for GPU speech and NVENC). Without a usable GPU, ClipSift falls back to CPU, which is much slower.
+- An up-to-date graphics driver. NVIDIA cards need a 2023 or newer driver for GPU speech. Without a usable NVIDIA GPU, speech runs on the CPU, which is much slower.
 - About 8 GB free for the app and models, plus room for downloads and exports. A 9 hour 1080p60 VOD is roughly 10 to 30 GB; 4K is more.
 - Internet during setup.
 
 ## Install
 
-1. Put the `clipsift` folder somewhere permanent, for example `C:\ClipSift` (avoid OneDrive-synced folders).
+1. Put the `clipsift` folder somewhere permanent, for example `C:\ClipSift` (avoid OneDrive-synced folders). A GitHub ZIP unzips to `clipsift-main`; rename or move it.
 2. Double-click **`Install.bat`**. It runs `setup\install.ps1`, which:
    - downloads uv, Python 3.11.18, ffmpeg 9.0.2 and Deno 2.9.8, checking each against a pinned SHA-256;
    - installs Python packages from `setup\requirements-windows.txt` (every package pinned and hash-checked), including NVIDIA's cuBLAS/cuDNN libraries for the speech model;
@@ -46,7 +61,7 @@ Delete the `clipsift` folder, the desktop shortcut, and `%LOCALAPPDATA%\ClipSift
 | Symptom | What to do |
 |---|---|
 | Settings shows "CUDA devices for speech: 0" | Update the NVIDIA driver. ClipSift still works on CPU, slower. The log names the missing DLL if cuBLAS/cuDNN failed to load. |
-| "NVENC: no" | Driver too old or GPU busy; exports fall back to x264 on the CPU automatically. |
+| Settings shows "Video encoder: x264 on CPU" on a gaming PC | Update the graphics driver. Exports still work on the CPU, just slower. |
 | YouTube check says "needs Deno" | Run `Install.bat` again, or set the Deno path in Settings. |
 | YouTube says "bot check" or rate limit | Try later. ClipSift does not sign in or work around it. |
 | "ffmpeg missing" in the top bar | Run `Install.bat` again or set ffmpeg's path in Settings. |

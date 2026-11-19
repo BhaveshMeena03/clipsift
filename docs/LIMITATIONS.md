@@ -31,6 +31,7 @@ Read this before trusting the picks.
 
 ## Platform
 
+- **Speech on the GPU needs NVIDIA.** AMD and Intel PCs export with their own hardware encoders but transcribe on the CPU, which is several times slower.
 - **The Windows scripts and CUDA/NVENC paths have not been run on Windows yet.** Everything else was tested on macOS (Apple M3 Pro) with the same code.
 - YouTube changes often. yt-dlp may need updating (`.venv\Scripts\python -m pip install -U yt-dlp yt-dlp-ejs`); downloads that YouTube blocks are reported, not worked around.
 - Instagram usually hides post numbers from logged-out visitors. CSV export or the official API (needs a professional account and your own token) are the reliable routes.

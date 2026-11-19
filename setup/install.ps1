@@ -43,6 +43,12 @@ function Get-Verified([string]$Url, [string]$Sha256, [string]$OutFile) {
   Move-Item -Force $part $OutFile
 }
 
+# Files from a GitHub ZIP carry the "downloaded from the internet" mark, which makes SmartScreen
+# block the .bat files. Clear it on ClipSift's own files only.
+Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.FullName -notlike "*\.venv\*" } |
+  Unblock-File -ErrorAction SilentlyContinue
+
 $arch = (Get-CimInstance Win32_OperatingSystem).OSArchitecture
 if ($arch -notmatch "64") { throw "ClipSift needs 64-bit Windows." }
 
@@ -95,7 +101,8 @@ if (-not (Test-Path (Join-Path $denoDir "deno.exe"))) {
 Step "Checking the install"
 & $py -c "import faster_whisper, ctranslate2, av, sherpa_onnx, rapidocr_onnxruntime, yt_dlp; print('packages ok')"
 if ($LASTEXITCODE) { throw "Package check failed" }
-& $py -c "from clipsift.gpu import system_info; import json; i = system_info(); print('GPU:', i['gpus'] or 'none found', '| CUDA devices for speech:', i['cuda_devices'])"
+$env:CLIPSIFT_TOOLS = $Tools
+& $py -c "import os; from clipsift.gpu import system_info; from clipsift.analysis.asr import plan_asr; from clipsift.media import ffmpeg; from pathlib import Path; ffmpeg.configure(Path(os.environ['CLIPSIFT_TOOLS'])); i = system_info(); print('GPU:', [g['name'] for g in i['gpus']] or 'none found', '| CUDA devices:', i['cuda_devices']); print('Speech will run on:', plan_asr({}, None).reason); print('Video encoder:', ffmpeg.hw_encoder_label() or 'x264 on CPU')"
 
 if (-not $SkipModels) {
   Step "Models"

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .. import models
-from ..gpu import cuda_device_count, nvidia_smi, setup_cuda_dlls
+from ..gpu import cuda_compute_types, cuda_device_count, nvidia_smi, setup_cuda_dlls
 from ..text.translit import romanize
 from ..util import Cancelled
 
@@ -31,36 +31,56 @@ class AsrPlan:
     compute_type: str
     model: str
     reason: str
+    device_index: int = 0
 
 
-def plan_asr(settings: dict, models_dir) -> AsrPlan:
+GPU_PRECISIONS = ("float16", "int8_float16", "int8", "float32")
+
+
+def plan_asr(settings: dict, models_dir, *, n_cuda=None, gpus=None, types_fn=None) -> AsrPlan:
+    """Pick card and precision from what is actually there: free VRAM and the precisions the card
+    supports (GTX 10-series has no float16, so it gets int8 instead of falling to CPU)."""
     want = settings.get("asr_device", "auto")
-    gpu_model = settings.get("asr_model_gpu", "large-v3")
-    cpu_model = settings.get("asr_model_cpu", "small")
-    if want in ("auto", "cuda"):
-        n = cuda_device_count()
-        gpus = nvidia_smi()
-        if n > 0:
-            free = gpus[0]["free_mb"] if gpus else None
-            need16, need8 = models.VRAM_NEED.get(gpu_model, (4300, 2900))
-            if free is None or free >= need16:
-                return AsrPlan("cuda", "float16", gpu_model,
-                               f"GPU {gpus[0]['name'] if gpus else ''} ({free if free is not None else '?'} MB free)")
-            if free >= need8:
-                return AsrPlan("cuda", "int8_float16", gpu_model, f"GPU with {free} MB free, using int8 to fit")
-            reason = f"only {free} MB VRAM free (need about {need8} MB)"
-        else:
-            reason = "no CUDA GPU available to the speech model"
-        if want == "cuda":
-            log.warning("GPU requested but not usable: %s", reason)
-        return AsrPlan("cpu", "int8", cpu_model, f"CPU fallback: {reason}")
-    return AsrPlan("cpu", "int8", cpu_model, "CPU selected in settings")
+    gpu_model = settings.get("asr_model_gpu", "hinglish-apex")
+    cpu_model = settings.get("asr_model_cpu", "hinglish-swift")
+    if want not in ("auto", "cuda"):
+        return AsrPlan("cpu", "int8", cpu_model, "CPU selected in settings")
+    n = cuda_device_count() if n_cuda is None else n_cuda
+    if n <= 0:
+        reason = "no CUDA GPU available to the speech model (non-NVIDIA GPU, old driver or missing CUDA libraries)"
+    else:
+        gpus = nvidia_smi() if gpus is None else gpus
+        usable = [g for g in gpus if 0 <= g.get("index", 0) < n]
+        best = max(usable, key=lambda g: g["free_mb"]) if usable else None
+        idx = best["index"] if best else 0
+        free = best["free_mb"] if best else None
+        name = best["name"] if best else "GPU"
+        types = (types_fn or cuda_compute_types)(idx)
+        need16, need8 = models.VRAM_NEED.get(gpu_model, (4300, 2900))
+        need = {"float16": need16, "int8_float16": need8, "int8": need8, "float32": need16 * 2}
+        for ct in GPU_PRECISIONS:
+            if types and ct not in types:
+                continue
+            if free is None or free >= need[ct]:
+                if ct == "float16":
+                    note = ""
+                elif types and "float16" in types:
+                    note = f", {ct} to fit in memory"
+                else:
+                    note = f", {ct} because this card has no float16"
+                return AsrPlan("cuda", ct, gpu_model, f"{name} ({free if free is not None else '?'} MB free{note})", idx)
+        reason = f"only {free} MB free on {name} (need about {need8} MB)"
+    if want == "cuda":
+        log.warning("GPU requested but not usable: %s", reason)
+    return AsrPlan("cpu", "int8", cpu_model, f"CPU fallback: {reason}")
 
 
 class Transcriber:
     def __init__(self, plan: AsrPlan, models_dir, cpu_threads: int = 0, cpu_model: str = "small"):
         self.plan = plan
         self.models_dir = models_dir
+        # 0 keeps CTranslate2's default of 4 threads. Measured: all 12 cores of an M3 Pro ran 4x
+        # slower than 4 threads (slow efficiency cores hold the rest back), and Intel 12th gen+ mix cores too.
         self.cpu_threads = cpu_threads
         self.cpu_model = cpu_model
         self.model = None
@@ -74,7 +94,7 @@ class Transcriber:
             raise RuntimeError(f"Speech model '{self.plan.model}' is not downloaded. Open Settings > Models.")
         try:
             self.model = WhisperModel(str(path), device=self.plan.device, compute_type=self.plan.compute_type,
-                                      cpu_threads=self.cpu_threads)
+                                      device_index=self.plan.device_index, cpu_threads=self.cpu_threads)
         except Exception as e:
             if self.plan.device != "cuda":
                 raise
@@ -112,10 +132,12 @@ class Transcriber:
             except RuntimeError as e:
                 msg = str(e).lower()
                 if self.plan.device == "cuda" and ("out of memory" in msg or "cuda" in msg or "cublas" in msg):
-                    if self.plan.compute_type == "float16" and attempt == 0:
-                        log.warning("GPU error (%s), retrying with int8_float16", e)
+                    if self.plan.compute_type in ("float16", "float32") and attempt == 0:
+                        smaller = "int8_float16" if "int8_float16" in cuda_compute_types(self.plan.device_index) else "int8"
+                        log.warning("GPU error (%s), retrying with %s", e, smaller)
                         self.close()
-                        self.plan = AsrPlan("cuda", "int8_float16", self.plan.model, "retry after GPU memory error")
+                        self.plan = AsrPlan("cuda", smaller, self.plan.model, "retry after GPU memory error",
+                                            self.plan.device_index)
                         self._load()
                     else:
                         self._to_cpu(f"GPU error during transcription: {str(e)[:120]}")

@@ -8,7 +8,15 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..media.ffmpeg import FFmpegError, ffmpeg_bin, nvenc_available, popen_kwargs, run_ffmpeg
+from ..media.ffmpeg import (
+    FFmpegError,
+    encoder_args,
+    ffmpeg_bin,
+    mark_encoder_bad,
+    pick_hw_encoder,
+    popen_kwargs,
+    run_ffmpeg,
+)
 from ..media.probe import probe
 from . import overlay
 
@@ -242,18 +250,16 @@ def measure_loudness(spec: RenderSpec) -> dict | None:
     return vals
 
 
-def video_codec_args(spec: RenderSpec) -> list[str]:
+def video_codec_args(spec: RenderSpec) -> tuple[list[str], tuple[str, int] | None]:
+    """Encoder options plus which hardware encoder they use (None means x264 on the CPU)."""
     if spec.preview:
-        return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p"]
-    use_nv = spec.encoder == "nvenc" or (spec.encoder == "auto" and nvenc_available())
-    best = spec.quality != "fast"
-    if use_nv:
-        return ["-c:v", "h264_nvenc", "-preset", "p7" if best else "p4", "-tune", "hq", "-rc", "vbr",
-                "-cq", "17" if best else "21", "-b:v", "0", "-maxrate", "40M" if best else "20M", "-bufsize", "80M",
-                "-spatial-aq", "1", "-temporal-aq", "1", "-rc-lookahead", "32", "-bf", "3",
-                "-profile:v", "high", "-pix_fmt", "yuv420p"]
-    return ["-c:v", "libx264", "-preset", "slow" if best else "veryfast", "-crf", "16" if best else "20",
-            "-profile:v", "high", "-pix_fmt", "yuv420p"]
+        return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p"], None
+    fast = spec.quality == "fast"
+    hw = pick_hw_encoder(spec.encoder, fast)
+    if hw:
+        return encoder_args(hw[0], hw[1], fast), hw
+    return ["-c:v", "libx264", "-preset", "veryfast" if fast else "slow", "-crf", "20" if fast else "16",
+            "-profile:v", "high", "-pix_fmt", "yuv420p"], None
 
 
 def render(spec: RenderSpec, out: Path, work: Path, *, cancel=None, on_progress=None, overwrite: bool = False) -> dict:
@@ -297,25 +303,27 @@ def render(spec: RenderSpec, out: Path, work: Path, *, cancel=None, on_progress=
         args += ["-map", "[aout]", "-c:a", "aac", "-b:a", "128k" if spec.preview else "256k", "-ar", "48000"]
     else:
         args += ["-an"]
-    args += video_codec_args(spec)
-    args += ["-r", f"{spec.fps:.3f}", "-t", f"{spec.duration:.3f}", "-movflags", "+faststart"]
+    head = args
+    tail = ["-r", f"{spec.fps:.3f}", "-t", f"{spec.duration:.3f}", "-movflags", "+faststart"]
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name("." + out.stem + ".part.mp4")
-    if tmp.exists():
-        tmp.unlink()
-    try:
-        run_ffmpeg([*args, str(tmp)], duration=spec.duration, on_progress=on_progress, cancel=cancel, overwrite=True)
-    except FFmpegError as e:
-        if "nvenc" in " ".join(video_codec_args(spec)) and not spec.preview:
-            log.warning("NVENC failed (%s), retrying with x264", str(e)[:200])
-            spec.encoder = "x264"
-            args = [a for a in args]
-            i = args.index("-c:v")
-            j = args.index("-r")
-            args = args[:i] + video_codec_args(spec) + args[j:]
-            run_ffmpeg([*args, str(tmp)], duration=spec.duration, on_progress=on_progress, cancel=cancel, overwrite=True)
-        else:
-            raise
+    # every failure retires one hardware option, so this always ends on x264 (success or a real error)
+    for _attempt in range(8):
+        codec, hw = video_codec_args(spec)
+        if tmp.exists():
+            tmp.unlink()
+        try:
+            run_ffmpeg([*head, *codec, *tail, str(tmp)], duration=spec.duration, on_progress=on_progress,
+                       cancel=cancel, overwrite=True)
+            break
+        except FFmpegError as e:
+            if hw is None:
+                raise
+            # passed the test encode but failed on the real clip: drop it and try the next one
+            log.warning("%s failed on this clip (%s); trying the next encoder", hw[0], str(e)[:200])
+            mark_encoder_bad(*hw)
+    else:
+        raise RenderError("No video encoder worked for this clip. See the worker log.")
     info = check_output(tmp, size, spec.duration, bool(ag))
     if out.exists() and not overwrite:
         raise RenderError(f"{out} already exists")

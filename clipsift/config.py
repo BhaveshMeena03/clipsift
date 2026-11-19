@@ -101,7 +101,7 @@ DEFAULT_SETTINGS = {
     "vertical_caption_y": 0.72,
     "vertical_hook_y": 0.14,
     "loudnorm": True,
-    "encoder": "auto",  # auto | nvenc | x264
+    "encoder": "auto",  # auto | nvenc | amf | qsv | x264
     "export_quality": "max",  # max | fast
     "download_quality": "best",  # best | 1080 | 720
     "hwaccel_decode": False,

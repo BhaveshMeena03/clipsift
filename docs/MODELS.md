@@ -24,4 +24,4 @@ The Oriserve models are published as transformers checkpoints. `setup\convert_mo
 
 ## GPU memory
 
-ClipSift reads free VRAM with `nvidia-smi` before loading the speech model and picks float16, then int8_float16, then CPU. On an out-of-memory error during a chunk it retries with int8, then falls back to CPU, and says so in the job message. Only one heavy model is loaded at a time.
+ClipSift reads free VRAM with `nvidia-smi` and asks the speech runtime which precisions the card supports, then picks float16, int8_float16, int8 or float32 in that order (GTX 10-series cards skip float16), and falls back to CPU only when nothing fits. On an out-of-memory error during a chunk it retries with int8, then falls back to CPU, and says so in the job message. Only one heavy model is loaded at a time.
