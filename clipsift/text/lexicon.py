@@ -12,8 +12,9 @@ CUES = {
     "funny": [
         r"\b(ha){2,}", r"\bhehe+", r"\blol\b", r"\blmao", r"bro what", r"what are you doing", r"why would you",
         r"kya kar raha", r"kya kar rahe", r"pagal", r"paagal", r"chutiya", r"noob", r"sorry+", r"my bad", r"oops",
-        r"oh no+", r"bhai+\b", r"yaar", r"kya scene", r"dimaag", r"bewakoof", r"idiot", r"bruh", r"are you serious",
+        r"oh no+", r"kya scene", r"dimaag", r"bewakoof", r"idiot", r"bruh", r"are you serious",
         r"what was that", r"tu kya", r"tune kya",
+        # not "bhai" or "yaar": on three real Hinglish streams they were 320 of 332 funny cue lines, mostly callouts
     ],
     "scare": [
         r"oh (my )?god", r"what was that", r"nahi+ nahi+", r"bhago", r"\brun\b", r"jesus", r"holy", r"scared",

@@ -118,7 +118,7 @@ def scan_range(path: Path, start: float, end: float, *, fps: float | None, keyfr
                     for ev in feed.update(t, hud.killfeed_rows(items, names)):
                         out["events"].append({"t": round(t, 2), "src": "killfeed", **ev})
                 elif key == "banner":
-                    for ev in banners.update(t, hud.banner_events(items, game_id)):
+                    for ev in banners.update(t, hud.banner_events(items, game_id, names)):
                         out["events"].append({"t": round(t, 2), "src": "banner", **ev})
                 elif key == "reward":
                     for amt in hud.reward_amounts(items):

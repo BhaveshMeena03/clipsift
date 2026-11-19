@@ -38,8 +38,9 @@ def hook_options(evidence: list[dict], sents: list[dict], max_quotes: int = 2) -
     opts: list[dict] = []
     for e in evidence:
         if e["kind"] == "kills" and e.get("count", 0) >= 2:
-            secs = max(1, round(e.get("span", 0)))
-            opts.append({"text": f"{e['count']} kills in {secs} seconds", "source": "evidence",
+            secs = round(e.get("span", 0))
+            when = "at once" if e.get("span", 0) < 1 else "in 1 second" if secs <= 1 else f"in {secs} seconds"
+            opts.append({"text": f"{e['count']} kills {when}", "source": "evidence",
                          "grounding": e["label"]})
         elif e["kind"] == "banner" and e.get("banner") in BANNER_HOOK:
             opts.append({"text": BANNER_HOOK[e["banner"]], "source": "evidence", "grounding": e["label"]})

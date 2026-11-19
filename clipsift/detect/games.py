@@ -8,7 +8,7 @@ GAMES = {
     },
     "cs2": {
         "name": "Counter-Strike 2 / CS:GO",
-        "killfeed": (0.70, 0.05, 0.29, 0.25),
+        "killfeed": (0.68, 0.05, 0.315, 0.25),  # long names push the feed left (measured on a 1080p stream)
         "banner": (0.25, 0.08, 0.50, 0.26),
         "banner_words": {
             "bomb_defused": ["has been defused", "bomb defused", "defused"],
@@ -17,6 +17,8 @@ GAMES = {
             "round_win_t": ["terrorists win"],
             "mvp": ["mvp"],
         },
+        # the round end panel names the MVP, from either team ("MVP panda", "Forty threw 3 grenades that round.")
+        "banner_needs_name": ["mvp"],
         "event_feed": "gsi",
         "weights": {"skill": 1.25, "funny": 1.0, "scare": 0.6, "other": 0.9},
     },
@@ -29,6 +31,7 @@ GAMES = {
             "thrifty": ["thrifty"], "round_win": ["round win", "won"], "spike_defused": ["spike defused", "defused"],
         },
         "weights": {"skill": 1.25, "funny": 1.0, "scare": 0.6, "other": 0.9},
+        "self_names": ["Me"],  # the kill feed shows your own name as "Me"
     },
     "dota2": {
         "name": "Dota 2",
@@ -47,9 +50,9 @@ GAMES = {
     },
     "wardogs": {
         "name": "Wardogs",
-        # positions are guesses until checked on a real frame in the layout screen
-        "killfeed": (0.70, 0.05, 0.29, 0.25),
-        "reward": (0.33, 0.30, 0.34, 0.30),
+        # measured on a 1080p stream (Nov 2026): the feed is mid-left, rows "killer [gun] [41m] victim".
+        # No reward box: no kill reward popup was seen, and shop prices ("$37,500") fill the middle in menus.
+        "killfeed": (0.005, 0.445, 0.28, 0.18),
         "weights": {"skill": 1.2, "funny": 1.0, "scare": 0.6, "other": 0.9},
     },
     "rust": {

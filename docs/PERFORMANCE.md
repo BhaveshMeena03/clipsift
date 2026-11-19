@@ -12,14 +12,26 @@
 
 The synthetic stream has very little speech, so its transcription time says nothing about a real stream. Speech time dominates on real streams.
 
-## Not measured: RTX 4070 Ti / RTX 4060 PCs
+## Measured: Windows 11, RTX 4070 Ti, Core i7-13700K, 32 GB (Nov 2026)
 
-No Windows/NVIDIA machine was available. Rough expectations, **estimates only** (a 4070 Ti will be faster than a 4060; both have plenty of memory for the default model):
+Three real 1080p60 YouTube streams with Hinglish talk and kill feed OCR on. Their keyframes are far apart, so the video scan decoded everything at 1 fps.
 
-- Speech (hinglish-apex, float16 on an RTX 40 card): tens of times faster than real time. For a 9 hour stream with 4 to 5 hours of speech, roughly 10 to 30 minutes.
-- Video scan: depends on keyframe spacing. With 2 s keyframes it decodes about 16k frames for 9 hours (minutes). With sparse keyframes it decodes everything at 1 fps sampling, which on a Ryzen 5 3600 is roughly 1 to 2 hours for 1080p60. Kill feed OCR adds time only when the feed region changes.
-- Whole 9 hour stream overnight: likely 1 to 3 hours on GPU, much longer on CPU only.
-- Export with NVENC: a few seconds to tens of seconds per clip.
+| Stream | Total | Audio scan | Speech | Video scan | Closer look | Caption check | Previews |
+|---|---|---|---|---|---|---|---|
+| Valorant, 1h34m | 57 min | 32 s | 1 min | 39 min | 14.5 min | 1.4 min | 1.1 min |
+| CS2, 1h44m | 60 min | 39 s | 1.4 min | 40 min | 15.4 min | 1.7 min | 1.1 min |
+| Wardogs, 3h50m | 74 min | 1.5 min | 4.3 min | 50 min | 13.7 min | 2.3 min | 1.2 min |
+
+- The video scan is most of the time, and not only for decoding: at the same resolution and frame rate it cost about 24 minutes per hour of video for Valorant and CS2 but 13 for Wardogs. The difference is kill feed OCR, which runs whenever the feed region changes.
+- Speech on the GPU costs about 1 minute per hour of stream.
+- The closer look costs about 14 minutes whatever the length, since it covers a capped number of stretches.
+- A 9 hour stream: about 2.5 hours for a game like Wardogs, about 4 hours for Valorant or CS2.
+- Processing a stream again reuses every scan, unless the in-game names or the layout boxes changed: then the video scan and the closer look run again in full.
+- The `hwaccel_decode` setting is not used yet: the video scan decodes on the CPU.
+
+## Not measured: RTX 4060 PC
+
+Speech will be a little slower than on the 4070 Ti. The video scan depends mostly on that PC's CPU, since decoding and OCR run there.
 
 ## Measure it on your PC
 

@@ -106,6 +106,13 @@ def test_funny_speech_is_categorized_funny():
     assert cands[0]["start"] <= 200 <= cands[0]["end"]
 
 
+@pytest.mark.parametrize("line", ["To bhai, ball par right side par", "Haan bhai.", "Aage aana padega yaar"])
+def test_hinglish_filler_words_are_not_funny(line):
+    # found on three real Hinglish streams: "bhai" and "yaar" made most callouts look like jokes
+    from clipsift.text.lexicon import cue_hits
+    assert "funny" not in cue_hits(line)
+
+
 def test_dropped_segments_do_not_count():
     n = 600
     seg = {"id": "s0", "start": 100.0, "end": 103.0, "status": "dropped", "text": "hahaha lol bro what", "words": []}
@@ -164,12 +171,105 @@ def test_kill_row_survives_ocr_flicker():
     assert len(dedupe_events(events)) == 1
 
 
+@pytest.mark.parametrize("a,b", [("Me VEPSN IMG Tinbuster", "Me VBPSNIMG Tinbuster"),
+                                 ("Me VBPSNIMGTinbuster", "Me VBPSN MGTinbuster"),
+                                 ("Me PRG|LEVELUPy", "Me PRGILEVELUP"), ("Me PRG|LEVELUP", "Me PRG|LEVELUP'Y")])
+def test_one_kill_read_two_ways_counts_once(a, b):
+    # found on a real Valorant stream: 10 of 72 kills were the same row read with "|" as I, space or nothing
+    events = [{"t": 100.0, "src": "killfeed", "kind": "kill", "sig": "x", "text": a},
+              {"t": 101.5, "src": "killfeed", "kind": "kill", "sig": "y", "text": b}]
+    assert len(dedupe_events(events)) == 1
+
+
+def test_cs2_kill_read_six_ways_counts_once_and_real_victims_stay_apart():
+    # found on a real CS2 stream: "12 kills in 13 s" was 3 kills, each read 4 to 6 times through a see-through feed
+    reads = ["Forty ira dxhan", "Forty fro dahnn", "Forty iro dahen", "Forty fro dzhen",
+             "Forty UlLUstOsAYUSH", "Forty [OullDustatAYUSH", "Forty [DallLusters]AYUSH", "Forty [Ball-Busters]AYUSH",
+             "Forty [Ball-Bustersl AYuSH", "Forty [Bal-Busters]AYUSH", "Forty Shaji", "Forty Shoji"]
+    events = [{"t": 2742.0 + i, "src": "killfeed", "kind": "kill", "sig": str(i), "text": r} for i, r in enumerate(reads)]
+    # 3 real kills -> 4: "ira dxhan" shares too little with any read of "fro dzhen" to be tied to it safely
+    assert [e["text"] for e in dedupe_events(events)] == ["Forty ira dxhan", "Forty fro dahnn",
+                                                            "Forty UlLUstOsAYUSH", "Forty Shaji"]
+    lobby = ["Forty fro dzhen", "Forty [Ball-Busters]AYUSH", "Forty Shoji", "Forty [BINGO69] Kazuto", "Forty C.C."]
+    events = [{"t": 10.0 + i, "src": "killfeed", "kind": "kill", "sig": str(i), "text": r} for i, r in enumerate(lobby)]
+    assert len(dedupe_events(events)) == 5  # an ace in 5 s stays 5 kills
+
+
+def test_wardogs_kill_read_without_its_victim_counts_once():
+    # found on a real Wardogs stream: the feed prints a distance before the victim and some reads catch only
+    # that ("Forty- [37m]", "Forty 157ml"); victims with Chinese names folded to nothing and never matched
+    reads = [(1327, "Forty [37m][LS]FL4vours"), (1330, "Forty- [37m]"), (1335, "Forty 157ml"),
+             (1341, "Forty [8m]lmxLolo"), (2062, "Forty [34m]爱笑的草丛"), (2064, "Forty [34m]爱笑的草从"),
+             (2066, "Forty [13m]残星会"), (5000, "Forty [55m]"), (5003, "Forty 55m")]
+    events = [{"t": float(t), "src": "killfeed", "kind": "kill", "sig": str(t), "text": r} for t, r in reads]
+    # a read with no victim near a readable one is that kill; on its own it is still a kill, counted once
+    assert [e["text"] for e in dedupe_events(events)] == ["Forty [37m][LS]FL4vours", "Forty [8m]lmxLolo",
+                                                            "Forty [34m]爱笑的草丛", "Forty [13m]残星会", "Forty [55m]"]
+    assert hud.victimless("Forty 2mT") and hud.victimless("Forty- [37m]") and not hud.victimless("Forty C.C.")
+
+
+def _kills(reads):
+    return [{"t": t, "src": "killfeed", "kind": "kill", "sig": str(i), "text": r} for i, (t, r) in enumerate(reads)]
+
+
+def test_wardogs_distance_ties_garbled_reads_of_one_kill():
+    # found on a real Wardogs stream: "13 kills in 13 s" was 4 kills; a Chinese name read 9 ways kept its "[20m]"
+    reads = [(6672.5, "Forty [34m]1TTTT]entence"), (6672.5, "Forty [33m][毛长]Achon10"), (6674.0, "Forty [34m][TTTT]音"),
+             (6676.0, "Forty [20m][年子情大]镇北看速运院已唐克."), (6677.5, "FortyV [20m]王统大]纽北速信脱疤"),
+             (6681.5, "FortyP [20m]生子征大】北飞柜兆"), (6685.5, "Forty [20m][牛子掘大]纽北急速脱施克0）")]
+    assert [e["text"] for e in dedupe_events(_kills(reads))] == [
+        "Forty [34m]1TTTT]entence", "Forty [33m][毛长]Achon10", "Forty [20m][年子情大]镇北看速运院已唐克."]
+    # "7 kills in 8 s" was 2: "[8m]" also read as "18m]", "[7m]" as "(7m)" and "17mm"
+    reads = [(13239.0, "Fortyr [8m]向心而行采你位"), (13240.0, "Forty 18m]两心m行壹桑均信"), (13240.0, "Forty 17mm"),
+             (13240.5, "Forty (7m) MHTOTI"), (13241.0, "FortyD 18m]同m行细付"), (13243.5, "FortyV [7m]-咖啡"),
+             (13247.0, "Forty [8m]向心而行後果你付 Xeruosst 99001")]
+    assert [e["text"] for e in dedupe_events(_kills(reads))] == ["Fortyr [8m]向心而行采你位", "Forty (7m) MHTOTI"]
+    # two enemies at the same distance with readable, different names stay two kills
+    assert len(dedupe_events(_kills([(10.0, "Forty [20m]Raider"), (12.0, "Forty [20m]Chalice")]))) == 2
+    assert hud.same_distance("62", "82") and hud.same_distance("18", "8") and not hud.same_distance("34", "33")
+
+
+def test_short_name_read_three_ways_counts_once():
+    # found on a real CS2 stream: one kill on "Mac" read as "Mac", "Mic" and "MBC" was "3 kills in 2 s"
+    assert len(dedupe_events(_kills([(5586.0, "Forty Mac"), (5586.5, "Forty Mic"), (5587.5, "Forty MBC")]))) == 1
+    assert len(dedupe_events(_kills([(10.0, "Forty Mac"), (11.0, "Forty Sam")]))) == 2
+
+
+def test_cs2_mvp_counts_only_when_it_names_you():
+    # found on a real CS2 stream: 25 MVP reads, most of them a teammate's or, after a lost round, an enemy's
+    mine = [{"text": "ROUND WON"}, {"text": "Forty threw3grenades thatround."}, {"text": "MVP"}]
+    other = [{"text": "ROUND WON"}, {"text": "dlgglr killed 2enemies with headshots that round."}, {"text": "MVP"},
+             {"text": "digglr"}]
+    assert [e["kind"] for e in hud.banner_events(mine, "cs2", ["Forty"])] == ["mvp"]
+    assert hud.banner_events(other, "cs2", ["Forty"]) == []
+    assert hud.banner_events(mine, "cs2") == []  # no in-game names set: no MVP is known to be yours
+
+
 def test_different_victims_are_different_kills():
     names = ["fortysevenfrags"]
     a = hud.killfeed_rows(_items([["fortysevenfrags", "player1"]]), names)
     b = hud.killfeed_rows(_items([["fortysevenfrags", "player2"]]), names)
     ft = hud.FeedTracker(ttl=9)
     assert len(ft.update(10, a)) == 1 and len(ft.update(11, b)) == 1
+
+
+def test_valorant_shows_your_own_name_as_me():
+    # found on a real Valorant stream: your kills read "Me [gun] Reyna", your deaths "TheKryne [gun] Me"
+    from clipsift.detect.games import game
+    names = ["fortysevenfrags", *game("valorant")["self_names"]]
+    rows = hud.killfeed_rows(_items([["Me", "Reyna"], ["TheKryne", "Me"], ["Gekko", "Leon S Kennedy"]]), names)
+    assert [r["kind"] for r in rows] == ["kill", "death", "feed"]
+    assert not hud.name_match("Me", ["fortysevenfrags"])  # other games: "Me" is not you
+    assert not hud.name_match("Mo", names) and not hud.name_match("Mel", names)
+
+
+def test_wardogs_distance_tags_and_self_kills():
+    # found on a real Wardogs stream: the victim side reads "[41m] Forty", and a grenade on yourself
+    # shows your name on both sides
+    rows = hud.killfeed_rows(_items([["MaMy_PoKo", "[41m] Forty"], ["Forty", "[1m] Forty"],
+                                     ["Forty", "[12m] Raider"], ["[TH]HarukiXD", "[15m] Chalice"]]), ["Forty"])
+    assert [r["kind"] for r in rows] == ["death", "death", "kill", "feed"]
+    assert hud.name_match("[TH] Forty", ["Forty"]) and not hud.name_match("[Forty]", ["Fortnite"])
 
 
 def test_name_match_rejects_short_and_different():
@@ -300,6 +400,8 @@ def test_hooks_are_grounded():
     opts = hook_options(ev, sentences(segs, 0, 30))
     texts = [o["text"] for o in opts]
     assert texts[:2] == ["3 kills in 6 seconds", "Clutch"]
+    # two kill rows read in one frame (found on a real Wardogs stream, shown as "2 kills in 0 s")
+    assert hook_options([{"kind": "kills", "count": 2, "span": 0.0, "label": "x"}], [])[0]["text"] == "2 kills at once"
     assert '"Bhai kya kar raha hai?"' in texts
     assert all("pagal" not in t for t in texts)  # flagged line is not quoted
 

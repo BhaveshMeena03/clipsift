@@ -10,11 +10,11 @@ A local Windows app for the fortysevenfrags channel (CS2, Valorant, Dota 2, Rock
 
 | Area | State |
 |---|---|
-| Milestones 1 to 5 (pipeline, eval harness, YouTube + long streams + resume, review/edit/export UI, references) | Built. 266 tests pass on macOS (Apple M3 Pro, CPU only); 318 pass on Windows (RTX 4070 Ti) |
+| Milestones 1 to 5 (pipeline, eval harness, YouTube + long streams + resume, review/edit/export UI, references) | Built. 266 tests pass on macOS (Apple M3 Pro, CPU only); 332 pass on Windows (RTX 4070 Ti) |
 | Windows install, CUDA speech, NVENC export | **Verified on Windows** (RTX 4070 Ti PC, 19 Nov 2026): `Install.bat` finished, hinglish-apex loads and transcribes on the GPU in float16, NVENC passes its test encode. A friend's RTX 4060 PC is next |
 | AMD AMF and Intel QSV export | Written and unit-tested with simulated hardware only; not run on a real AMD or Intel PC |
-| Detection quality on real streams | **Unverified.** Only a synthetic labelled sample was checked |
-| HUD regions (kill feed, banners, money popups) | Default positions are guesses, Wardogs especially; must be set on a real frame |
+| Detection quality on real streams | Top picks of three real streams (Valorant, CS2, Wardogs) checked by eye against the footage, 19 Nov 2026. Not yet scored on a labelled real stream |
+| HUD regions (kill feed, banners, money popups) | Valorant, CS2 and Wardogs defaults checked on one real 1080p stream each; other games are guesses |
 
 ## Run it (Windows)
 
@@ -97,14 +97,20 @@ The tests find ffmpeg and the models in `data\` by themselves. Speech tests make
 - **On Windows, `.venv\Scripts\python.exe` is a launcher** that starts the real python.exe as its child, so `Popen.pid` of anything started with `sys.executable` is the launcher. Use `interpreter_pid()` for stop files and job ownership and `kill_tree()` to kill. Before this, closing the app never reached the worker's stop file and the stall watchdog never matched a job.
 - **Kill feed rows are compared with OCR lookalikes folded** (`1 l i`, `0 o`, `5 s`, `8 b`, `2 z`). Windows OCR read `sova123` as `soval23` on one frame and counted a fourth kill.
 - **Never paste ffmpeg output into a filter graph.** ffmpeg also prints the input file's tags, which anyone can fill. Loudness values are read only after the last `[Parsed_loudnorm` line and only as finite numbers.
+- **One kill feed row is read many ways.** On real streams raw reads overcounted kills up to 5x (Wardogs: 180 reads, 35 kills). `dedupe_events` compares each read with every read of the last 9 s: victims alike, one letter off ("Mac" / "MBC"), or the same printed distance (Wardogs "[20m]", far steadier than a Chinese name). A read with no victim is dropped next to a readable one. Keep the regression tests that say real multi-kills stay apart.
+- **Banners can name someone else.** CS2's round end panel shows the MVP of either team; `banner_needs_name` makes such a banner count only with your name in it.
+- **"bhai" and "yaar" are not funny cues.** They were 320 of 332 funny cue lines on three real Hinglish streams and filled the funny picks with callouts.
+- **The scan caches include the in-game names and layout boxes,** so changing either re-runs the whole video scan. Rules that change what a scan reads go into the cache key through `scan_rules()`, only for the games they apply to.
 
 ## Next steps, in order
 
 1. Done (19 Nov 2026): `Install.bat` finished on the RTX 4070 Ti PC with `Speech will run on: NVIDIA GeForce RTX 4070 Ti ...` and `Video encoder: NVIDIA NVENC`, and hinglish-apex, hinglish-swift and ced-mini ready. Nothing failed.
 2. Done (19 Nov 2026): ruff clean and all 318 tests pass on Windows. The first run found three Windows-only bugs (venv launcher PIDs, a test using SIGKILL, OCR flicker double-counting kills) and a security review found nine more issues; all are fixed with tests.
-3. First real run in the app on a short recording (10 to 30 min): Settings (in-game names), Layout (draw facecam, gameplay and kill feed boxes on a real frame), Process, Review, Export. Check the exported clip plays with sound and captions.
-4. `clipsift.bench` on 10 minutes of a real stream with normal talking. Put the measured numbers into PERFORMANCE.md.
+3. Done (19 Nov 2026): three full real streams (Valorant 1h34m, CS2 1h44m, Wardogs 3h50m) through Settings, Layout, Process, Review and Export. Exports are 1080x1920 60 fps with sound, captions, hook and name. Fixed from what they showed: Valorant writes your name as "Me", kills counted many times, Wardogs distance tags and self kills, CS2 MVP for anyone, "bhai"/"yaar" as funny cues. Open: the facecam moved mid-stream on the Wardogs stream (step 9).
+4. Done (19 Nov 2026): full-stream timings on the RTX 4070 Ti PC are in PERFORMANCE.md (they replace the 10 minute bench estimate).
 5. Label one recording with a quiet skill play and a funny moment and run `clipsift.eval` (format in TESTING.md). Report misses and false positives honestly; tune scoring only with evidence from these reports.
-6. Replace the guessed HUD default regions (Wardogs first) with ones measured on real frames.
+6. Done for Valorant, CS2 and Wardogs (19 Nov 2026), measured on one real 1080p stream each. Other games still use guesses.
 7. Set up the CS2 game event feed (Settings > Live game events) before a stream, then process that stream and check the events line up.
 8. Install on the friend's RTX 4060 PC.
+9. Layouts that change during a recording: the Wardogs test stream moved the facecam from bottom right to top left at about 3:00:00. Exports after the move crop the game HUD as the facecam, and the facecam movement signal reads the HUD.
+10. The `hwaccel_decode` setting is not used: the video scan, most of the processing time, decodes on the CPU.

@@ -6,6 +6,9 @@ import os
 import time
 from pathlib import Path
 
+from rapidfuzz import fuzz
+from rapidfuzz.distance import Levenshtein
+
 from .. import models
 from ..analysis import asr
 from ..analysis.audio_scan import run_audio_scan
@@ -13,6 +16,7 @@ from ..analysis.candidates import find_candidates, quiet_windows
 from ..analysis.visual_scan import OcrEngine, hud_config, run_visual_scan, scan_range
 from ..detect import gsi
 from ..detect.games import game
+from ..detect.hud import kill_distance, row_key, same_distance, victim_key, victim_name_key, victimless
 from ..media import tracks
 from ..media.audio import load_audio
 from ..media.probe import keyframe_interval, probe
@@ -217,7 +221,7 @@ def run_process(ctx: JobContext) -> dict:
                "gameplay": layout_data.get("gameplay") if info.orientation == "horizontal" else None}
     game_id = src.get("game") or "generic"
     hud_cfg = hud_config(game_id, layout_data) if info.orientation == "horizontal" else {}
-    names = [n for n in (st.get("ingame_names") or []) if n]
+    names = [n for n in (st.get("ingame_names") or []) if n] + list(game(game_id).get("self_names", []))
     vmode = opts.get("visual_scan") or "auto"
     visual = None
     ocr = None
@@ -234,7 +238,7 @@ def run_process(ctx: JobContext) -> dict:
         else:
             fps, kfo, how = 1.0, False, "1 frame per second"
         vdir = stage_dir(work, "visual", {"fp": fp, "fps": fps, "kfo": kfo, "regions": regions, "hud": hud_cfg,
-                                          "names": names, "game": game_id})
+                                          "names": names, "game": game_id, **scan_rules(game_id)})
         visual = run_visual_scan(path, info.duration, vdir, fps=fps, keyframes_only=kfo, regions=regions,
                                  hud_cfg=hud_cfg, ocr=ocr, names=names, game_id=game_id, cancel=ctx.cancelled,
                                  on_progress=lambda p: ctx.progress("visual_scan", p, f"Scanning video, {how}"))
@@ -266,7 +270,8 @@ def run_process(ctx: JobContext) -> dict:
     detail_events: list[dict] = []
     detail_vis = {"t": [], "motion": [], "bright": [], "cut": [], "face": [], "gp": []}
     if vmode != "off" and windows:
-        ddir = stage_dir(work, "detail", {"fp": fp, "regions": regions, "hud": hud_cfg, "names": names, "game": game_id})
+        ddir = stage_dir(work, "detail", {"fp": fp, "regions": regions, "hud": hud_cfg, "names": names, "game": game_id,
+                                          **scan_rules(game_id)})
         tot = sum(b - a for a, b in windows) or 1.0
         done = 0.0
         for a, b in windows:
@@ -375,19 +380,65 @@ def merge_windows(ws: list[tuple[float, float]], pad: float = 2.0) -> list[tuple
     return [(round(a, 2), round(b, 2)) for a, b in out]
 
 
+def scan_rules(game_id: str) -> dict:
+    """Game rules that change what a scan reads, for its cache key. Empty for most games, so their scans stay valid."""
+    needs_name = game(game_id).get("banner_needs_name")
+    return {"banner_needs_name": needs_name} if needs_name else {}
+
+
+def same_feed_row(a: dict, b: dict) -> bool:
+    """One kill feed row stays on screen for seconds and OCR reads it differently each time ("fro dzhen" as
+    "ira dxhan", "[Ball-Busters]AYUSH" as "UlLUstOsAYUSH"). For your kills the victim decides: nobody dies twice
+    within the window, so a close enough victim is the same kill. Rows are compared on their text, so reads
+    cached by an older version merge too."""
+    ka, kb = row_key(a["text"]), row_key(b["text"])
+    if ka == kb:
+        return True
+    if a.get("kind") == "kill":
+        blind_a, blind_b = victimless(a["text"]), victimless(b["text"])
+        if blind_a or blind_b:
+            return blind_a and blind_b  # neither read caught a victim: one kill
+        va, vb = victim_key(a["text"]), victim_key(b["text"])
+        if len(va) >= 3 and len(vb) >= 3 and fuzz.ratio(va, vb) >= 70:
+            return True
+        if max(len(va), len(vb)) >= 3 and Levenshtein.distance(va, vb) <= 1:
+            return True  # a short name with one letter misread ("Mac" as "MBC"): 70% of 3 letters allows none
+        # a printed distance (Wardogs) reads more reliably than the name, above all a name in Chinese
+        da, db = kill_distance(a["text"]), kill_distance(b["text"])
+        if da and db and same_distance(da, db):
+            na, nb = victim_name_key(a["text"]), victim_name_key(b["text"])
+            return not (len(na) >= 4 and len(nb) >= 4 and fuzz.ratio(na, nb) < 50)  # unless the names differ
+        return False
+    return fuzz.ratio(ka, kb) >= 90
+
+
+def _feed_kill(e: dict, blind: bool) -> bool:
+    return (e.get("kind") == "kill" and e.get("src") == "killfeed" and bool(e.get("text"))
+            and victimless(e["text"]) == blind)
+
+
 def dedupe_events(events: list[dict]) -> list[dict]:
+    """One event per real thing. Each read is compared with every recent read, kept or not, so a clean later
+    read of a row ties a garbled one to the rest. A kill read with no victim ("Forty [37m]") is dropped when a
+    readable kill is within the window: it is a read of that kill, or of one OCR never read at all."""
+    events = sorted(events, key=lambda e: e["t"])
+    readable = [e["t"] for e in events if _feed_kill(e, blind=False)]
+    events = [e for e in events if not (_feed_kill(e, blind=True) and any(abs(e["t"] - t) <= 9 for t in readable))]
     out: list[dict] = []
-    for e in sorted(events, key=lambda e: e["t"]):
+    seen: list[dict] = []
+    for e in events:
         dup = False
-        for p in reversed(out[-12:]):
+        for p in reversed(seen[-40:]):
             if e["t"] - p["t"] > 9:
                 break
             same = p.get("kind") == e.get("kind") and p.get("src") == e.get("src") and (
-                p.get("sig") == e.get("sig") if "sig" in e else p.get("amount") == e.get("amount"))
+                same_feed_row(p, e) if p.get("text") and e.get("text") and "sig" in e
+                else p.get("sig") == e.get("sig") if "sig" in e else p.get("amount") == e.get("amount"))
             window = 9 if e.get("src") == "killfeed" else 4
             if same and e["t"] - p["t"] <= window:
                 dup = True
                 break
+        seen.append(e)
         if not dup:
             out.append(e)
     return out

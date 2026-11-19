@@ -308,7 +308,8 @@ def collect_evidence(f: dict, events: list[dict], start: float, end: float, peak
         src = "game feed" if kills[0].get("src") == "gsi" else "kill feed OCR"
         region = "killfeed"
         span = ts[-1] - ts[0]
-        label = (f"{len(ts)} kills in {span:.0f} s ({src})" if len(ts) > 1 else f"1 kill with your name as killer ({src})")
+        label = (f"1 kill with your name as killer ({src})" if len(ts) == 1
+                 else f"{len(ts)} kills at once ({src})" if span < 1 else f"{len(ts)} kills in {span:.0f} s ({src})")
         ev.append({"kind": "kills", "tier": "observed", "label": label, "t": ts[0], "weight": 0.4 * min(1, len(ts) / 3),
                    "count": len(ts), "span": span, "times": ts, "region": region})
     deaths = [e for e in events if e.get("kind") == "death" and start <= e["t"] <= end]
