@@ -1,6 +1,7 @@
 """Build and run the ffmpeg graph for one 9:16 clip."""
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -24,6 +25,7 @@ log = logging.getLogger(__name__)
 
 FULL = (1080, 1920)
 PREVIEW = (540, 960)
+LOUDNORM_KEYS = ("input_i", "input_tp", "input_lra", "input_thresh", "target_offset")
 
 
 class RenderError(RuntimeError):
@@ -221,9 +223,10 @@ def audio_graph(spec: RenderSpec, loud: dict | None = None, for_measure: bool = 
     if for_measure:
         chain.append("loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json")
     elif loud:
-        chain.append("loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={input_i}:measured_TP={input_tp}:"
-                     "measured_LRA={input_lra}:measured_thresh={input_thresh}:offset={target_offset}:linear=true"
-                     .format(**loud))
+        v = {k: float(loud[k]) for k in LOUDNORM_KEYS}  # numbers only: nothing else may reach the filter graph
+        chain.append(f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={v['input_i']:.2f}:measured_TP={v['input_tp']:.2f}:"
+                     f"measured_LRA={v['input_lra']:.2f}:measured_thresh={v['input_thresh']:.2f}:"
+                     f"offset={v['target_offset']:.2f}:linear=true")
         chain.append("aresample=48000")
     parts.append(post + ",".join(chain) + "[aout]")
     return ";".join(parts)
@@ -237,15 +240,26 @@ def measure_loudness(spec: RenderSpec) -> dict | None:
            "-t", f"{spec.duration:.3f}", "-filter_complex", g, "-map", "[aout]", "-vn", "-f", "null", os.devnull]
     r = subprocess.run(cmd, capture_output=True, timeout=600, stdin=subprocess.DEVNULL, **popen_kwargs())
     text = r.stderr.decode("utf-8", "replace")
-    m = re.search(r"\{\s*\"input_i\".*?\}", text, re.S)
-    if r.returncode != 0 or not m:
+    vals = parse_loudnorm(text) if r.returncode == 0 else None
+    if vals is None:
         log.warning("loudness measure failed: %s", text[-400:])
+    return vals
+
+
+def parse_loudnorm(stderr: str) -> dict | None:
+    """loudnorm prints its JSON last, after its own '[Parsed_loudnorm' line. ffmpeg also prints the input's
+    metadata tags, which anyone can fill with look-alike JSON, so read only after the last marker and keep
+    finite numbers only."""
+    at = stderr.rfind("[Parsed_loudnorm")
+    m = re.search(r"\{.*?\}", stderr[at:], re.S) if at >= 0 else None
+    if not m:
         return None
-    vals = json.loads(m.group(0))
     try:
-        if float(vals["input_i"]) < -70 or vals["input_i"] in ("-inf", "inf"):
-            return None
-    except (KeyError, ValueError):
+        raw = json.loads(m.group(0))
+        vals = {k: float(raw[k]) for k in LOUDNORM_KEYS}
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not all(math.isfinite(x) for x in vals.values()) or vals["input_i"] < -70:
         return None
     return vals
 

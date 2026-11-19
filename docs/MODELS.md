@@ -10,7 +10,7 @@ All models run locally. Setup downloads the defaults; others are optional (Setti
 | RapidOCR (PP-OCR) | Reading kill feeds, banners, money popups, reference captions | bundled in the `rapidocr-onnxruntime` package | Apache-2.0 | in package | ~15 MB |
 | Silero VAD | Finding speech | bundled in `faster-whisper` | MIT | in package | ~2 MB |
 | large-v3 (optional) | Stock Whisper, writes Hindi in Devanagari, romanized afterwards | Systran/faster-whisper-large-v3 | MIT | 3.1 GB | 3.1 GB |
-| large-v3-turbo, large-v2, medium, small (optional) | Stock Whisper alternatives | Systran / mobiuslabsgmbh on Hugging Face | MIT | 0.5 to 3.1 GB | same |
+| large-v3-turbo, large-v2, medium, small (optional) | Stock Whisper alternatives | Systran / dropbox-dash (formerly mobiuslabsgmbh) on Hugging Face, each pinned to a commit | MIT | 0.5 to 3.1 GB | same |
 
 ## Why the Hinglish models
 

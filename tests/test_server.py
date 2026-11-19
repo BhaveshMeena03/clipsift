@@ -1,16 +1,24 @@
+import re
 import time
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
-from clipsift.config import Paths
+from clipsift.config import IS_WINDOWS, Paths
 from clipsift.ingest.youtube import YTError, classify, normalize_url
 from clipsift.prefs.model import performance, suggest
 from clipsift.prefs.references import parse_csv, parse_date, parse_number, upsert_metrics
-from clipsift.server.app import create_app
+from clipsift.server.app import WEB, create_app
+from clipsift.server.security import launch_code, load_token, sign
 from tests.conftest import needs_media
 
 H = {"X-ClipSift": "1"}
+
+
+def _open(c, token):
+    """What the launcher does: open the page with a fresh one-time code, which sets the cookie."""
+    return c.get(f"/?k={launch_code(token)}")
 
 
 @pytest.fixture
@@ -18,7 +26,7 @@ def client(tmp_path):
     paths = Paths(tmp_path / "home")
     app = create_app(paths, {"port": 8765}, token="t" * 40)
     c = TestClient(app, base_url="http://127.0.0.1:8765")
-    c.get("/")  # sets the cookie
+    _open(c, "t" * 40)
     c.paths = paths
     c.db = app.state.db
     return c
@@ -30,8 +38,40 @@ def test_api_needs_cookie(tmp_path):
     app = create_app(Paths(tmp_path / "h"), {"port": 8765}, token="x" * 40)
     c = TestClient(app, base_url="http://127.0.0.1:8765")
     assert c.get("/api/state").status_code == 401
-    c.get("/")
+    _open(c, "x" * 40)
     assert c.get("/api/state").status_code == 200
+
+
+def test_page_alone_gives_no_api_access(tmp_path):
+    # any local program can load the page; only a valid launch code turns into the API cookie
+    app = create_app(Paths(tmp_path / "h"), {"port": 8765}, token="x" * 40)
+    c = TestClient(app, base_url="http://127.0.0.1:8765")
+    assert c.get("/").status_code == 200 and "set-cookie" not in c.get("/").headers
+    assert c.get("/api/state").status_code == 401
+
+
+@pytest.mark.parametrize("code", [lambda t: launch_code("w" * 40),                       # signed with another secret
+                                  lambda t: launch_code(t, now=time.time() - 600),      # too old
+                                  lambda t: launch_code(t)[:-1] + "0",                   # tampered
+                                  lambda t: "not.a.code", lambda t: ""])
+def test_bad_launch_codes_give_no_cookie(tmp_path, code):
+    app = create_app(Paths(tmp_path / "h"), {"port": 8765}, token="x" * 40)
+    c = TestClient(app, base_url="http://127.0.0.1:8765")
+    assert "set-cookie" not in c.get(f"/?k={code('x' * 40)}").headers
+
+
+def test_launch_code_works_once(tmp_path):
+    app = create_app(Paths(tmp_path / "h"), {"port": 8765}, token="x" * 40)
+    code = launch_code("x" * 40)
+    first = TestClient(app, base_url="http://127.0.0.1:8765").get(f"/?k={code}")
+    again = TestClient(app, base_url="http://127.0.0.1:8765").get(f"/?k={code}")
+    assert "set-cookie" in first.headers and "set-cookie" not in again.headers
+
+
+def test_ping_signs_the_nonce_with_the_install_secret(tmp_path):
+    app = create_app(Paths(tmp_path / "h"), {"port": 8765}, token="z" * 40)
+    reply = TestClient(app, base_url="http://127.0.0.1:8765").get("/api/ping?nonce=abc123").json()
+    assert reply["proof"] == sign("z" * 40, "ping:abc123") != sign("q" * 40, "ping:abc123")
 
 
 def test_foreign_host_rejected(client):
@@ -46,7 +86,7 @@ def test_writes_need_custom_header(client):
 
 def test_cookie_is_strict_and_httponly(tmp_path):
     app = create_app(Paths(tmp_path / "h"), {"port": 8765}, token="y" * 40)
-    r = TestClient(app, base_url="http://127.0.0.1:8765").get("/")
+    r = _open(TestClient(app, base_url="http://127.0.0.1:8765"), "y" * 40)
     sc = r.headers["set-cookie"].lower()
     assert "httponly" in sc and "samesite=strict" in sc
 
@@ -59,7 +99,7 @@ def test_ping_is_open(tmp_path):
 def test_token_persists_across_launches(tmp_path):
     p = Paths(tmp_path / "h")
     a = TestClient(create_app(p, {"port": 8765}), base_url="http://127.0.0.1:8765")
-    a.get("/")
+    _open(a, load_token(p.home))
     b = TestClient(create_app(p, {"port": 8765}), base_url="http://127.0.0.1:8765")
     b.cookies = a.cookies
     assert b.get("/api/state").status_code == 200
@@ -70,6 +110,54 @@ def test_secret_settings_are_masked(client):
     assert client.get("/api/settings").json()["instagram_graph_token"] == "set"
     client.put("/api/settings", json={"instagram_graph_token": "set"}, headers=H)  # unchanged
     assert client.db.settings()["instagram_graph_token"] == "EAAsecretsecretsecretsecret123"
+
+
+@pytest.mark.parametrize("values", [{"max_candidates": "40\"><script>"}, {"captions_on": "yes"},
+                                    {"encoder": "nvenc; calc"}, {"ingame_names": "fortysevenfrags"},
+                                    {"gsi_token": "attacker"}, {"ffmpeg_path": r"C:\Windows\System32\calc.exe"},
+                                    {"ffmpeg_path": "ffmpeg.exe"}, {"instagram_graph_user_id": "12; x"}])
+def test_settings_refuse_wrong_types_and_programs(client, values):
+    assert client.put("/api/settings", json=values, headers=H).status_code == 400
+
+
+def test_settings_clamp_numbers_and_accept_a_real_tool(client, tmp_path):
+    st = client.put("/api/settings", json={"max_candidates": 100000, "caption_y": -3}, headers=H).json()
+    assert st["max_candidates"] == 200 and st["caption_y"] == 0.3
+    exe = tmp_path / ("ffmpeg.exe" if IS_WINDOWS else "ffmpeg")
+    exe.write_bytes(b"")
+    assert client.put("/api/settings", json={"ffmpeg_path": str(exe)}, headers=H).status_code == 200
+
+
+@pytest.mark.parametrize("bad", [{"hud_insets": [{"src": [0.1, 0.1, 0.2, 0.2], "pos": "x\"><img>"}]},
+                                 {"hud_insets": [{"src": [0.1, 0.1, 0.2, 0.2], "scale": "0.3,movie=x"}]},
+                                 {"brand": {"color": "red;x"}}, {"brand": {"logo": r"C:\Windows\win.ini"}},
+                                 {"brand": "text"}])
+def test_layout_refuses_bad_inset_and_brand_values(client, bad):
+    r = client.post("/api/layouts", json={"name": "L", "data": {"gameplay_mode": "crop", **bad}}, headers=H)
+    assert r.status_code == 400
+
+
+def test_game_feed_refuses_big_bodies_and_odd_auth(client):
+    assert client.post("/gsi/cs2", content=b"x" * (65 * 1024), headers={"Content-Type": "text/plain"}).status_code == 413
+    assert client.post("/gsi/cs2", json={"auth": "token"}).status_code == 403
+    assert client.post("/gsi/cs2", json={"auth": {"token": "é" * 3}}).status_code == 403
+
+
+# ---------- page and icon ----------
+
+def test_every_static_file_the_page_loads_is_served(client):
+    refs = set(re.findall(r'(?:href|src)="/static/([^"]+)"', client.get("/").text))
+    assert {"clipsift.ico", "style.css", "app.js"} <= refs
+    for ref in refs:
+        r = client.get(f"/static/{ref}")
+        assert r.status_code == 200 and r.content, ref
+        assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_app_icon_has_the_sizes_windows_uses():
+    with Image.open(WEB / "clipsift.ico") as im:
+        assert im.format == "ICO"
+        assert {(s, s) for s in (16, 20, 24, 32, 40, 48, 64, 256)} <= im.info["sizes"]
 
 
 # ---------- validation ----------

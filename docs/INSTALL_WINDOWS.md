@@ -1,6 +1,6 @@
 # Installing on Windows
 
-Built for Windows 10/11 64-bit PCs like an RTX 4070 Ti or RTX 4060 with 16 GB RAM. The scripts were written for Windows but had not been run on a Windows machine when this was written; if a step fails, the log on screen says which one.
+Built for Windows 10/11 64-bit PCs like an RTX 4070 Ti or RTX 4060 with 16 GB RAM. The install has been verified on an RTX 4070 Ti PC (GPU speech and NVENC); AMD and Intel PCs have not been tried yet. If a step fails, the log on screen says which one.
 
 ## What runs where
 

@@ -1,6 +1,5 @@
 """Long recording: chunk boundaries, block checkpoints, and a hard kill of the worker mid-run."""
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -8,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from clipsift.util import interpreter_pid, kill_tree
 from tests import synth
 from tests.conftest import add_source, ffmpeg, make_home, needs_media, needs_models
 
@@ -54,11 +54,8 @@ def test_hard_kill_mid_transcription_then_resume(long_stream, tmp_path):
         while time.time() < deadline and not (tdir / "chunk_0000.json").exists():
             time.sleep(0.2)
         assert (tdir / "chunk_0000.json").exists(), "first chunk never finished"
-        os.kill(w.pid, signal.SIGKILL)
-        w.wait(timeout=10)
     finally:
-        if w.poll() is None:
-            w.kill()
+        kill_tree(w)  # no cleanup, like a crash; also kills the real Python behind the Windows venv launcher
     first_chunk_mtime = (tdir / "chunk_0000.json").stat().st_mtime_ns
     audio_blocks = {p.name: p.stat().st_mtime_ns for p in (paths.source_work(sid) / "audio").glob("block_*.json")}
     assert db.job(jid)["status"] == "running"  # left behind by the killed worker
@@ -68,7 +65,7 @@ def test_hard_kill_mid_transcription_then_resume(long_stream, tmp_path):
         while time.time() < deadline and db.job(jid)["status"] in ("queued", "running"):
             time.sleep(0.5)
     finally:
-        (paths.home / f"worker.stop.{w.pid}").touch()
+        (paths.home / f"worker.stop.{interpreter_pid(w)}").touch()
         w.wait(timeout=60)
     job = db.job(jid)
     assert job["status"] == "done", job["error"]

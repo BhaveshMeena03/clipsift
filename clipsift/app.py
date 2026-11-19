@@ -2,7 +2,6 @@
 import argparse
 import logging
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -13,6 +12,7 @@ from pathlib import Path
 
 from .config import IS_WINDOWS, Paths
 from .log import setup_logging
+from .util import find_on_path, interpreter_pid, kill_tree
 
 log = logging.getLogger("clipsift.app")
 DEFAULT_PORT = 8765
@@ -42,7 +42,7 @@ class WorkerSupervisor:
         if not hasattr(self, "_db"):
             self._db = DB(self.paths.db)
         row = self._db.one("SELECT id, kind, updated_at FROM jobs WHERE status='running' AND worker_pid=? "
-                           "ORDER BY updated_at LIMIT 1", (self.proc.pid,))
+                           "ORDER BY updated_at LIMIT 1", (interpreter_pid(self.proc),))
         if row and row["updated_at"] and time.time() - row["updated_at"] > STALL_S:
             return row
         return None
@@ -61,8 +61,7 @@ class WorkerSupervisor:
                 if stuck:
                     log.error("job %s (%s) made no progress for %d minutes; restarting the worker",
                               stuck["id"], stuck["kind"], STALL_S // 60)
-                    self.proc.kill()
-                    self.proc.wait(timeout=30)
+                    kill_tree(self.proc, timeout=30)
             code = self.proc.poll()
             if code is not None and not self.stopping.is_set():
                 if code == 2:
@@ -92,12 +91,12 @@ class WorkerSupervisor:
         self.stopping.set()
         if self.proc and self.proc.poll() is None:
             # per-pid name, so a slow old app can never stop a newer app's worker
-            (self.paths.home / f"worker.stop.{self.proc.pid}").touch()
+            (self.paths.home / f"worker.stop.{interpreter_pid(self.proc)}").touch()
             try:
                 self.proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 log.warning("worker did not stop in time, killing it")
-                self.proc.kill()
+                kill_tree(self.proc)
 
 
 def port_free(port: int) -> bool:
@@ -112,22 +111,28 @@ def port_free(port: int) -> bool:
             return False
 
 
-def clipsift_at(port: int) -> bool:
+def clipsift_at(port: int, token: str) -> bool:
+    """True only for this install's ClipSift: it must sign a random nonce with the install's secret."""
     import json
+    import secrets
     import urllib.request
+
+    from .server.security import same, sign
+    nonce = secrets.token_hex(16)
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1.5) as r:
-            return json.loads(r.read().decode()).get("app") == "clipsift"
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping?nonce={nonce}", timeout=1.5) as r:
+            reply = json.loads(r.read().decode())
     except Exception:
         return False
+    return reply.get("app") == "clipsift" and same(reply.get("proof", ""), sign(token, "ping:" + nonce))
 
 
-def pick_port(preferred: int) -> tuple[int, bool]:
+def pick_port(preferred: int, token: str) -> tuple[int, bool]:
     """(port, already_running). Waits a moment for a restarting copy to let go of the port."""
     for _ in range(12):
         if port_free(preferred):
             return preferred, False
-        if clipsift_at(preferred):
+        if clipsift_at(preferred, token):
             return preferred, True
         time.sleep(0.5)
     for port in range(preferred + 1, preferred + 20):
@@ -139,7 +144,7 @@ def pick_port(preferred: int) -> tuple[int, bool]:
 def open_window(url: str) -> None:
     """Edge app mode gives a plain window on Windows; otherwise the default browser."""
     if IS_WINDOWS:
-        candidates = [shutil.which("msedge"),
+        candidates = [find_on_path("msedge"),
                       os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
                       os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe")]
         for c in candidates:
@@ -159,11 +164,13 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     paths = Paths(Path(args.home) if args.home else None).ensure()
     setup_logging(paths.logs, "server")
-    port, running = pick_port(args.port)
+    from .server.security import launch_code, load_token
+    token = load_token(paths.home)
+    port, running = pick_port(args.port, token)
     if running:
         print(f"ClipSift is already running at http://127.0.0.1:{port}/", flush=True)
         if not args.no_window:
-            open_window(f"http://127.0.0.1:{port}/")
+            open_window(f"http://127.0.0.1:{port}/?k={launch_code(token)}")
         return 0
     if port != args.port:
         log.warning("port %s is used by another program, using %s; CS2/Dota event feeds will not reach "
@@ -173,12 +180,12 @@ def main(argv=None) -> int:
 
     from .server.app import create_app
     sup = None if args.no_worker else WorkerSupervisor(paths, state)
-    app = create_app(paths, state, on_shutdown=sup.stop if sup else None)
+    app = create_app(paths, state, token=token, on_shutdown=sup.stop if sup else None)
     if sup:
         threading.Thread(target=sup.run, name="worker-supervisor", daemon=True).start()
     url = f"http://127.0.0.1:{port}/"
     if not args.no_window:
-        threading.Timer(1.2, open_window, args=(url,)).start()
+        threading.Timer(1.2, open_window, args=(f"{url}?k={launch_code(token)}",)).start()
     print(f"ClipSift is running at {url}  (close this window to quit)", flush=True)
     try:
         uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)

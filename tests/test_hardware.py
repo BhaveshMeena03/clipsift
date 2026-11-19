@@ -61,7 +61,7 @@ def test_cpu_setting_wins():
 
 def test_nvidia_smi_parsing(monkeypatch):
     from clipsift import gpu as gpumod
-    monkeypatch.setattr(gpumod.shutil, "which", lambda name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(gpumod, "find_on_path", lambda name: "/usr/bin/nvidia-smi")
     out = "0, NVIDIA GeForce RTX 4070 Ti, 12282, 11020, 566.03\n1, NVIDIA GeForce RTX 4060, 8188, 7700, 566.03\n"
     monkeypatch.setattr(gpumod.subprocess, "run",
                         lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=out, stderr=""))

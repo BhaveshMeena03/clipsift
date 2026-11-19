@@ -13,7 +13,8 @@ h3 { margin: 18px 0 8px; font-size: 15px; font-weight: 600; }
 .muted { color: var(--muted); } .small { font-size: 12px; } .mono { font-family: Consolas, Menlo, monospace; }
 .top { height: 46px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--line);
   background: var(--panel); position: sticky; top: 0; z-index: 5; }
-.brand { font-weight: 700; letter-spacing: .3px; }
+.brand { font-weight: 700; letter-spacing: .3px; display: flex; align-items: center; gap: 8px; }
+.brand img { width: 22px; height: 22px; }
 #sysline { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
 .dot.ok { background: var(--good); } .dot.bad { background: var(--bad); }

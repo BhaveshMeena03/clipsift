@@ -37,6 +37,19 @@ $Tools = Join-Path $DataDir "tools"
 $Cache = Join-Path $Tools "_downloads"
 New-Item -ItemType Directory -Force -Path $Tools, $Cache | Out-Null
 
+# Only this Windows account, SYSTEM and Administrators may read or change ClipSift's code, tools and data.
+# Folders on drives other than C: let every signed-in account modify them by default, which would let
+# another account swap ffmpeg.exe or the Python files for its own, or read the app's secrets.
+function Protect-Folder([string]$Path) {
+  $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  & icacls $Path /inheritance:r /grant:r "*${me}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /Q | Out-Null
+  if ($LASTEXITCODE) { Write-Warning "Could not limit who can change $Path (icacls exit code $LASTEXITCODE)." }
+}
+Protect-Folder $Root
+if (-not ([System.IO.Path]::GetFullPath($DataDir)).StartsWith(([System.IO.Path]::GetFullPath($Root)).TrimEnd('\') + '\')) {
+  Protect-Folder $DataDir
+}
+
 function Step($msg) { Write-Host ""; Write-Host "== $msg" -ForegroundColor Cyan }
 
 function Get-Verified([string]$Url, [string]$Sha256, [string]$OutFile) {
@@ -130,6 +143,7 @@ if (-not $NoShortcut) {
   $s.TargetPath = Join-Path $Root "ClipSift.bat"
   $s.WorkingDirectory = $Root
   $s.WindowStyle = 7  # minimized console
+  $s.IconLocation = (Join-Path $Root "clipsift\web\clipsift.ico") + ",0"
   $s.Save()
   Write-Host "   desktop shortcut: $lnk"
 }

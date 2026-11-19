@@ -11,6 +11,7 @@ from ..detect import gsi
 from ..media.probe import ProbeError, probe
 from ..prefs import instagram, references
 from ..prefs.model import performance, suggest
+from .security import same
 
 
 def register_extra(app, db, paths, settings):
@@ -158,7 +159,8 @@ def register_extra(app, db, paths, settings):
             payload = await request.json()
         except ValueError:
             return JSONResponse({"error": "bad json"}, status_code=400)
-        if not isinstance(payload, dict) or (payload.get("auth") or {}).get("token") != gsi_token():
+        auth = payload.get("auth") if isinstance(payload, dict) else None
+        if not isinstance(auth, dict) or not same(auth.get("token", ""), gsi_token()):
             return JSONResponse({"error": "bad token"}, status_code=403)
         events = states[game].update(payload, now=time.time())
         if events:

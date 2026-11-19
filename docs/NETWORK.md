@@ -23,5 +23,5 @@
 
 - Processing local files, transcription, detection, previews and exports never use the network.
 - No telemetry, no accounts, no uploads, no automatic posting.
-- The app listens on 127.0.0.1 only. Other devices on your network cannot reach it, and other websites in your browser cannot drive it (per-install cookie, Host check, custom header on changes).
+- The app listens on 127.0.0.1 only. Other devices on your network cannot reach it, and other websites in your browser cannot drive it (Host check, custom header on changes). Only the window opened from the ClipSift shortcut gets API access: it carries a one-time launch code signed with this install's secret, so other programs and other Windows accounts on the PC see the page but cannot use it.
 - The CS2/Dota event feed is a local POST from the game to 127.0.0.1 with its own token.

@@ -172,3 +172,47 @@ def human_bytes(n: float) -> str:
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
+
+
+def find_on_path(name: str) -> str | None:
+    """Like shutil.which, but never the current folder. On Windows, Python 3.11's which() looks in the
+    current folder first, so an ffmpeg.exe dropped there would run instead of the real one."""
+    exe = name + (".exe" if os.name == "nt" and not name.lower().endswith(".exe") else "")
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        d = d.strip().strip('"')
+        if not d or not os.path.isabs(d):
+            continue
+        cand = os.path.join(d, exe)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
+def interpreter_pid(proc) -> int:
+    """PID of the Python that really runs a child started with sys.executable. On Windows,
+    .venv\\Scripts\\python.exe is a small launcher that starts the real python.exe as its own child,
+    so proc.pid is the launcher, not the process that names stop files, holds locks and claims jobs."""
+    import psutil
+    try:
+        kids = [c for c in psutil.Process(proc.pid).children() if c.name().lower().startswith("python")]
+    except psutil.Error:
+        return proc.pid
+    return kids[0].pid if len(kids) == 1 else proc.pid
+
+
+def kill_tree(proc, timeout: float = 10.0) -> None:
+    """Hard kill a child and everything it started (the real Python behind a venv launcher, ffmpeg),
+    and wait until they are gone so nothing still holds the worker lock."""
+    import psutil
+    try:
+        procs = psutil.Process(proc.pid).children(recursive=True)
+    except psutil.Error:
+        procs = []
+    for p in procs:
+        try:
+            p.kill()
+        except psutil.Error:
+            pass
+    proc.kill()
+    psutil.wait_procs(procs, timeout=timeout)
+    proc.wait(timeout=timeout)

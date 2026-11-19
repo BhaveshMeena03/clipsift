@@ -1,13 +1,12 @@
 import logging
 import os
-import shutil
 import subprocess
 import threading
 from collections import deque
 from pathlib import Path
 
 from ..config import IS_WINDOWS
-from ..util import Cancelled
+from ..util import Cancelled, find_on_path
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ def _which(name: str) -> str:
         for cand in (_tools_dir / "ffmpeg" / "bin" / exe, _tools_dir / "ffmpeg" / exe, _tools_dir / exe):
             if cand.is_file():
                 return str(cand)
-    found = shutil.which(name)
+    found = find_on_path(name)
     if not found:
         raise FFmpegError(f"{name} was not found. Run the setup script or set its path in Settings.")
     return found

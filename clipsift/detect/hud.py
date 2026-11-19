@@ -11,6 +11,16 @@ def _norm(t: str) -> str:
     return re.sub(r"[^a-z0-9]", "", t.lower())
 
 
+# characters OCR swaps from one frame to the next ("sova123" read as "soval23")
+_OCR_LOOKALIKES = str.maketrans("01i582", "ollsbz")
+
+
+def row_sig(texts: list[str]) -> str:
+    """Identity of a kill feed row that survives one-character OCR flicker. Names that differ by
+    more than lookalike characters stay different ("player1" vs "player2")."""
+    return "|".join(_norm(t).translate(_OCR_LOOKALIKES) for t in texts)
+
+
 def name_match(text: str, names: list[str], threshold: int = 85) -> bool:
     t = _norm(text)
     if len(t) < 3:
@@ -49,7 +59,7 @@ def killfeed_rows(ocr_items: list[dict], names: list[str]) -> list[dict]:
         texts = [i for i in row if len(_norm(i["text"])) >= 2]
         if not texts:
             continue
-        sig = "|".join(_norm(i["text"]) for i in texts)
+        sig = row_sig([i["text"] for i in texts])
         left, right = texts[0], texts[-1]
         kind = "feed"
         if name_match(left["text"], names) and len(texts) >= 2:

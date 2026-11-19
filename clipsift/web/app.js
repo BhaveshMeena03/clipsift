@@ -132,10 +132,10 @@ async function viewAdd() {
       <td><b>${h(s.title || s.url || s.path)}</b><div class="small muted mono">${h(s.kind === "youtube" ? s.url : s.path)}</div>
         ${s.error ? `<div class="errbox">${h(s.error)}</div>` : ""}<div data-dlslot="${s.id}"></div></td>
       <td>${h(fmtTs(s.duration))}<div class="small muted">${h(s.orientation || "")} ${s.width ? h(s.width + "x" + s.height) : ""}</div></td>
-      <td><select data-game="${s.id}">${games.map((g) => `<option value="${g.id}" ${g.id === s.game ? "selected" : ""}>${h(g.name)}</option>`).join("")}</select></td>
+      <td><select data-game="${s.id}">${games.map((g) => `<option value="${h(g.id)}" ${g.id === s.game ? "selected" : ""}>${h(g.name)}</option>`).join("")}</select></td>
       <td><select data-layout="${s.id}" ${s.orientation === "vertical" ? "disabled title='Vertical clips keep their own composition'" : ""}>
         <option value="">Full frame (no layout)</option>
-        ${layouts.map((l) => `<option value="${l.id}" ${l.id === s.layout_id ? "selected" : ""}>${h(l.name)}</option>`).join("")}</select></td>
+        ${layouts.map((l) => `<option value="${h(l.id)}" ${l.id === s.layout_id ? "selected" : ""}>${h(l.name)}</option>`).join("")}</select></td>
       <td><button class="sm" data-tracks="${s.id}">Audio tracks${tracks ? " ✓" : ""}</button></td>
       <td><button class="sm bad" data-remove="${s.id}">Remove</button></td></tr>`;
   }).join("");
@@ -227,28 +227,28 @@ async function viewLayout() {
   const g = S.games.find((x) => x.id === ed.game);
   $("#main").innerHTML = `<h2>Layout</h2>
     <div class="row" style="margin-bottom:10px">
-      <select id="lsel"><option value="">+ New layout</option>${S.layouts.map((l) => `<option value="${l.id}" ${l.id === ed.id ? "selected" : ""}>${h(l.name)}</option>`).join("")}</select>
+      <select id="lsel"><option value="">+ New layout</option>${S.layouts.map((l) => `<option value="${h(l.id)}" ${l.id === ed.id ? "selected" : ""}>${h(l.name)}</option>`).join("")}</select>
       <input id="lname" value="${h(ed.name)}" placeholder="Layout name"><button class="primary" id="lsave">Save layout</button>
       ${ed.id ? `<button class="bad" id="ldel">Delete</button>` : ""}<span class="grow"></span>
-      <select id="lsrc">${horiz.map((s) => `<option value="${s.id}" ${s.id === ed.src ? "selected" : ""}>${h(s.title)}</option>`).join("") || "<option>Add a horizontal recording first</option>"}</select></div>
+      <select id="lsrc">${horiz.map((s) => `<option value="${h(s.id)}" ${s.id === ed.src ? "selected" : ""}>${h(s.title)}</option>`).join("") || "<option>Add a horizontal recording first</option>"}</select></div>
     ${horiz.length ? "" : `<div class="warnbox">Add a horizontal recording to draw regions over a real frame.</div>`}
     <div class="layout-wrap">
       <div>
         <div class="stage" id="stage"><img id="lframe" alt="" draggable="false"></div>
         <div class="row" style="margin-top:8px"><span class="small muted">Frame at</span>
-          <input type="range" id="lt" min="0" max="${Math.floor(horiz.find((s) => s.id === ed.src)?.duration || 100)}" value="${ed.t}" class="grow">
+          <input type="range" id="lt" min="0" max="${Math.floor(horiz.find((s) => s.id === ed.src)?.duration || 100)}" value="${h(ed.t)}" class="grow">
           <span id="ltlabel" class="small mono">${fmtTs(ed.t)}</span></div>
         <p class="small muted">Drag boxes to move, drag the white corner to resize. Regions are saved as fractions of the frame, so they work at any resolution.</p>
-        <h3>HUD regions for <select id="lgame">${S.games.filter((x) => x.hud_ocr).map((x) => `<option value="${x.id}" ${x.id === ed.game ? "selected" : ""}>${h(x.name)}</option>`).join("")}</select></h3>
+        <h3>HUD regions for <select id="lgame">${S.games.filter((x) => x.hud_ocr).map((x) => `<option value="${h(x.id)}" ${x.id === ed.game ? "selected" : ""}>${h(x.name)}</option>`).join("")}</select></h3>
         <p class="small muted">Where the kill feed, round banners or money popups appear. These are read with OCR to find quiet skill plays. Game defaults are rough guesses; move them onto the real HUD.</p>
         <div class="row" id="hudbtns"></div>
       </div>
       <div class="card">
         <canvas id="vprev" class="vprev" width="270" height="480"></canvas>
         <div class="kv" style="margin-top:12px">
-          <label>Facecam panel</label><div class="row"><input type="checkbox" id="lfc" ${ed.data.facecam ? "checked" : ""}><input type="range" id="lfch" min="0.15" max="0.45" step="0.01" value="${ed.data.facecam_h}" class="grow"></div>
+          <label>Facecam panel</label><div class="row"><input type="checkbox" id="lfc" ${ed.data.facecam ? "checked" : ""}><input type="range" id="lfch" min="0.15" max="0.45" step="0.01" value="${h(ed.data.facecam_h)}" class="grow"></div>
           <label>Gameplay</label><select id="lmode"><option value="crop">Crop to my gameplay box</option><option value="fit">Fit my gameplay box (no crop)</option><option value="full">Full frame (nothing cropped)</option></select>
-          <label>Branding panel</label><div class="row"><input type="checkbox" id="lbon" ${ed.data.brand_on ? "checked" : ""}><input type="range" id="lbh" min="0.04" max="0.15" step="0.005" value="${ed.data.brand_h}" class="grow"></div>
+          <label>Branding panel</label><div class="row"><input type="checkbox" id="lbon" ${ed.data.brand_on ? "checked" : ""}><input type="range" id="lbh" min="0.04" max="0.15" step="0.005" value="${h(ed.data.brand_h)}" class="grow"></div>
           <label>Brand text</label><input id="lbt" value="${h(ed.data.brand?.text || "")}">
           <label>Panel colour</label><input id="lbc" type="color" value="${h(ed.data.brand?.color || "#111318")}">
           <label>Text colour</label><input id="lbtc" type="color" value="${h(ed.data.brand?.text_color || "#ffffff")}">
@@ -296,7 +296,7 @@ async function viewLayout() {
   const renderInsets = () => {
     $("#insets").innerHTML = (ed.data.hud_insets || []).map((ins, i) => `<div class="row small" style="margin-bottom:4px">
       inset ${i + 1} <select data-ipos="${i}">${["tr", "tl", "br", "bl", "tc"].map((p) => `<option ${ins.pos === p ? "selected" : ""}>${p}</option>`).join("")}</select>
-      size <input type="range" min="0.15" max="0.6" step="0.01" value="${ins.scale || 0.32}" data-iscale="${i}">
+      size <input type="range" min="0.15" max="0.6" step="0.01" value="${h(ins.scale || 0.32)}" data-iscale="${i}">
       <button class="sm bad" data-idel="${i}">✕</button></div>`).join("");
     $$("[data-ipos]").forEach((el) => el.onchange = () => { ed.data.hud_insets[+el.dataset.ipos].pos = el.value; drawVPrev(); });
     $$("[data-iscale]").forEach((el) => el.oninput = () => { ed.data.hud_insets[+el.dataset.iscale].scale = +el.value; drawVPrev(); });
@@ -403,10 +403,10 @@ async function viewProcess() {
   $("#main").innerHTML = `<h2>Process</h2>
     <div class="card"><div class="kv">
       <label>Speech language</label><select id="plang"><option value="mixed">Hindi + English mixed (Roman Hinglish)</option><option value="en">English only</option><option value="hi">Hindi only</option><option value="auto">Auto-detect</option></select>
-      <label>Candidates per recording</label><input type="number" id="pmax" min="5" max="200" value="${st.max_candidates}">
-      <label>Clip length (s)</label><div class="row"><input type="number" id="pmin" min="5" max="120" value="${st.min_clip_s}" style="width:80px"> to
-        <input type="number" id="pmaxlen" min="10" max="180" value="${st.max_clip_s}" style="width:80px"></div>
-      <label>Quiet stretches checked / hour</label><input type="number" id="pquiet" min="0" max="60" value="${st.quiet_samples_per_hour}">
+      <label>Candidates per recording</label><input type="number" id="pmax" min="5" max="200" value="${h(st.max_candidates)}">
+      <label>Clip length (s)</label><div class="row"><input type="number" id="pmin" min="5" max="120" value="${h(st.min_clip_s)}" style="width:80px"> to
+        <input type="number" id="pmaxlen" min="10" max="180" value="${h(st.max_clip_s)}" style="width:80px"></div>
+      <label>Quiet stretches checked / hour</label><input type="number" id="pquiet" min="0" max="60" value="${h(st.quiet_samples_per_hour)}">
       <label>Video scan</label><select id="pvis"><option value="auto">Auto (keyframes if dense, else 1 fps)</option><option value="1fps">1 frame per second (slower, misses less)</option><option value="keyframes">Keyframes only (fastest)</option><option value="off">Off</option></select>
     </div><p class="small muted">Long streams are processed in chunks and checkpointed. You can close the app; it resumes where it stopped. Time estimates are estimates.</p></div>
     ${ready.length ? `<div class="card"><table><tr><th>Recording</th><th>Game</th><th style="width:45%">Status</th><th></th></tr>
@@ -444,7 +444,7 @@ async function viewReview() {
   S.cands = await api("/api/candidates?" + q);
   const tab = (key, val, label) => `<a class="${f[key] === val ? "active" : ""}" data-f="${key}" data-v="${val}">${label}</a>`;
   $("#main").innerHTML = `<h2>Review candidates</h2>
-    <div class="row" style="margin-bottom:8px"><select id="fsrc"><option value="">All recordings</option>${S.sources.map((s) => `<option value="${s.id}" ${String(s.id) === f.source ? "selected" : ""}>${h(s.title)}</option>`).join("")}</select>
+    <div class="row" style="margin-bottom:8px"><select id="fsrc"><option value="">All recordings</option>${S.sources.map((s) => `<option value="${h(s.id)}" ${String(s.id) === f.source ? "selected" : ""}>${h(s.title)}</option>`).join("")}</select>
       <span class="small muted">Scores rank moments inside one recording. They are not predictions of views.</span></div>
     <div class="tabs">${tab("category", "", "All")}${tab("category", "skill", "Skill plays")}${tab("category", "funny", "Funny squad")}${tab("category", "scare", "Reactions / scares")}${tab("category", "other", "Other")}
       <span style="width:16px"></span>${tab("status", "", "Any status")}${tab("status", "new", "New")}${tab("status", "accepted", "Accepted")}${tab("status", "rejected", "Rejected")}${tab("status", "exported", "Exported")}</div>
@@ -512,15 +512,15 @@ function renderEditor() {
       </div>
       <div>
         <h3 style="margin-top:0">Start and end</h3>
-        <div class="row"><input id="estart" value="${fmtTsMs(b0)}" style="width:110px">
+        <div class="row"><input id="estart" value="${h(fmtTsMs(b0))}" style="width:110px">
           ${[-5, -1, 1, 5].map((d) => `<button class="sm" data-nudge="start" data-d="${d}">${d > 0 ? "+" : ""}${d}s</button>`).join("")}
           <button class="sm" data-playhead="start">= playhead</button></div>
-        <div class="row" style="margin-top:6px"><input id="eend" value="${fmtTsMs(b1)}" style="width:110px">
+        <div class="row" style="margin-top:6px"><input id="eend" value="${h(fmtTsMs(b1))}" style="width:110px">
           ${[-5, -1, 1, 5].map((d) => `<button class="sm" data-nudge="end" data-d="${d}">${d > 0 ? "+" : ""}${d}s</button>`).join("")}
           <button class="sm" data-playhead="end">= playhead</button></div>
         <div class="small muted" id="edur">${(b1 - b0).toFixed(1)} s</div>
         <h3>Hook text</h3>
-        ${hooks.map((o, i) => `<label class="row small"><input type="radio" name="hook" value="${i}" ${o.text === curHook ? "checked" : ""}> ${h(o.text)} <span class="muted">(${h(o.grounding)})</span></label>`).join("")}
+        ${hooks.map((o, i) => `<label class="row small"><input type="radio" name="hook" value="${h(i)}" ${o.text === curHook ? "checked" : ""}> ${h(o.text)} <span class="muted">(${h(o.grounding)})</span></label>`).join("")}
         <label class="row small"><input type="radio" name="hook" value="custom" ${curHook && !hooks.some((o) => o.text === curHook) ? "checked" : ""}> <input id="ehook" class="grow" maxlength="120" value="${h(curHook && !hooks.some((o) => o.text === curHook) ? curHook : "")}" placeholder="Write your own"></label>
         <label class="row small"><input type="radio" name="hook" value="none" ${!curHook ? "checked" : ""}> No hook</label>
         <h3>Captions</h3>
@@ -536,8 +536,8 @@ function renderEditor() {
         ${vertical ? `<p class="small muted">Vertical source: kept as recorded, only captions and hook are added.</p>` : `
         <h3>Framing</h3>
         <div class="kv"><label>Gameplay</label><select id="emode"><option value="">Layout default</option><option value="crop">Crop</option><option value="fit">Fit (no crop)</option><option value="full">Full frame</option></select>
-          <label>Pan crop</label><input type="range" id="epan" min="-1" max="1" step="0.05" value="${e.pan ?? 0}">
-          <label>Facecam size</label><div class="row"><input type="range" id="efch" min="0.15" max="0.45" step="0.01" value="${e.facecam_h ?? 0.3}" class="grow"><label class="small"><input type="checkbox" id="efcoff" ${e.facecam_off ? "checked" : ""}> off</label></div>
+          <label>Pan crop</label><input type="range" id="epan" min="-1" max="1" step="0.05" value="${h(e.pan ?? 0)}">
+          <label>Facecam size</label><div class="row"><input type="range" id="efch" min="0.15" max="0.45" step="0.01" value="${h(e.facecam_h ?? 0.3)}" class="grow"><label class="small"><input type="checkbox" id="efcoff" ${e.facecam_off ? "checked" : ""}> off</label></div>
           <label>Auto HUD insets</label><label class="small"><input type="checkbox" id="eins" ${e.auto_insets !== false ? "checked" : ""}> ${c.auto_insets.length ? h(c.auto_insets.map((i) => i.region).join(", ") + " would be cropped out, so it is added as an inset") : "nothing needed"}</label></div>`}
         <div class="row" style="margin-top:16px"><button class="primary" id="esave">Save changes</button>
           <button class="good" id="eacc">Accept</button><button class="bad" id="erej">Reject</button></div>
@@ -676,7 +676,7 @@ async function viewRefs() {
     ${refs.length ? `<div class="card"><table><tr><th>Clip</th><th>Posted</th><th>Views</th><th>Likes</th><th>Comments</th><th title="relative to your other clips, age-adjusted when dates are known">Perf.</th><th>Type</th><th>★ / ✕</th><th></th></tr>
       ${refs.map((r) => `<tr><td><b>${h(r.title || r.permalink || r.path)}</b><div class="small muted mono">${h(r.path || r.permalink || "")}</div></td>
         <td><input data-rf="${r.id}:posted_at" value="${h(fmtDate(r.posted_at))}" style="width:105px" placeholder="yyyy-mm-dd"></td>
-        ${["views", "likes", "comments"].map((k) => `<td><input data-rf="${r.id}:${k}" value="${r[k] ?? ""}" style="width:80px" placeholder="unknown"></td>`).join("")}
+        ${["views", "likes", "comments"].map((k) => `<td><input data-rf="${r.id}:${k}" value="${h(r[k] ?? "")}" style="width:80px" placeholder="unknown"></td>`).join("")}
         <td class="small">${r.perf ? r.perf.z.toFixed(2) : "-"}</td><td class="small">${h(r.features?.category || (r.analyzed_at ? "?" : "not analysed"))}</td>
         <td><label><input type="checkbox" data-rfav="${r.id}" ${r.favourite ? "checked" : ""}>★</label> <label><input type="checkbox" data-rrej="${r.id}" ${r.rejected ? "checked" : ""}>✕</label></td>
         <td><button class="sm bad" data-rdel="${r.id}">✕</button></td></tr>`).join("")}</table>
@@ -725,18 +725,18 @@ async function viewSettings() {
       <label>In-game names</label><input data-s="ingame_names" data-list="1" value="${h((st.ingame_names || []).join(", "))}" title="comma separated; used to read your kills in the kill feed">
       <label>Export folder</label><input data-s="export_dir" value="${h(st.export_dir)}" placeholder="${h(sys.home)}\\exports">
       <label>Speech device</label><select data-s="asr_device"><option value="auto">Auto (GPU if it has room)</option><option value="cuda">GPU</option><option value="cpu">CPU (slow)</option></select>
-      <label>GPU speech model</label><select data-s="asr_model_gpu">${sys.models.map((m) => `<option value="${m.name}">${h(m.name)}</option>`).join("")}</select>
-      <label>CPU speech model</label><select data-s="asr_model_cpu">${sys.models.map((m) => `<option value="${m.name}">${h(m.name)}</option>`).join("")}</select>
+      <label>GPU speech model</label><select data-s="asr_model_gpu">${sys.models.map((m) => `<option value="${h(m.name)}">${h(m.name)}</option>`).join("")}</select>
+      <label>CPU speech model</label><select data-s="asr_model_cpu">${sys.models.map((m) => `<option value="${h(m.name)}">${h(m.name)}</option>`).join("")}</select>
       <label>Download quality</label><select data-s="download_quality"><option value="best">Best available</option><option value="1080">1080p</option><option value="720">720p</option></select>
       <label>Export quality</label><select data-s="export_quality"><option value="max">Maximum (slower)</option><option value="fast">Fast</option></select>
       <label>Encoder</label><select data-s="encoder"><option value="auto">Auto (best hardware encoder that works)</option><option value="nvenc">NVIDIA NVENC</option><option value="amf">AMD AMF</option><option value="qsv">Intel Quick Sync</option><option value="x264">x264 (CPU)</option></select>
       <label>Captions on by default</label><input type="checkbox" data-s="captions_on" ${st.captions_on ? "checked" : ""}>
-      <label>Words per caption</label><input type="number" min="1" max="8" data-s="caption_words_max" value="${st.caption_words_max}">
+      <label>Words per caption</label><input type="number" min="1" max="8" data-s="caption_words_max" value="${h(st.caption_words_max)}">
       <label>UPPERCASE captions</label><input type="checkbox" data-s="caption_upper" ${st.caption_upper ? "checked" : ""}>
       <label>Highlight spoken word</label><input type="checkbox" data-s="caption_highlight" ${st.caption_highlight ? "checked" : ""}>
-      <label>Caption height (layout)</label><input type="number" step="0.01" min="0.3" max="0.9" data-s="caption_y" value="${st.caption_y}">
-      <label>Caption height (vertical)</label><input type="number" step="0.01" min="0.3" max="0.9" data-s="vertical_caption_y" value="${st.vertical_caption_y}">
-      <label>Hook seconds (0 = whole clip)</label><input type="number" min="0" max="60" data-s="hook_seconds" value="${st.hook_seconds}">
+      <label>Caption height (layout)</label><input type="number" step="0.01" min="0.3" max="0.9" data-s="caption_y" value="${h(st.caption_y)}">
+      <label>Caption height (vertical)</label><input type="number" step="0.01" min="0.3" max="0.9" data-s="vertical_caption_y" value="${h(st.vertical_caption_y)}">
+      <label>Hook seconds (0 = whole clip)</label><input type="number" min="0" max="60" data-s="hook_seconds" value="${h(st.hook_seconds)}">
       <label>Light censor by default</label><input type="checkbox" data-s="censor_on" ${st.censor_on ? "checked" : ""}>
       <label>Extra words to censor</label><input data-s="profanity_extra" data-list="1" value="${h((st.profanity_extra || []).join(", "))}">
       <label>Never censor</label><input data-s="profanity_allow" data-list="1" value="${h((st.profanity_allow || []).join(", "))}">
@@ -819,11 +819,12 @@ window.closeModal = closeModal;
 // ---------- boot ----------
 
 (async function boot() {
+  if (location.search) history.replaceState(null, "", "/");  // the launch code is single use; keep it out of reloads
   try {
     [S.games, S.layouts, S.settings] = await Promise.all([api("/api/games"), api("/api/layouts"), api("/api/settings")]);
     api("/api/system").then((s) => {
       $("#sysline").textContent = (s.gpus.length ? s.gpus[0].name + " · " : "No NVIDIA GPU · ") + (s.hw_encoder ? s.hw_encoder + " · " : "") + "free disk " + s.disk_free
-        + (s.ffmpeg ? "" : " · ffmpeg missing!");
+        + (s.ffmpeg ? "" : " · ffmpeg missing!") + (s.port_warning ? " · " + s.port_warning : "");
     }).catch(() => {});
   } catch (e) { toast("Could not reach ClipSift: " + e.message, true); }
   go("add");

@@ -1,4 +1,5 @@
 """Model registry and downloads. Sizes are download sizes; licenses are the model weights'."""
+import hashlib
 import logging
 import shutil
 import tarfile
@@ -17,12 +18,21 @@ WHISPER = {
     "hinglish-swift": {"repo": "Oriserve/Whisper-Hindi2Hinglish-Swift", "revision": "cd0d4d013062d542569135460a79025337df1982",
                        "mb": 290, "license": "Apache-2.0", "convert": True, "family": "hinglish",
                        "note": "CPU default: small Hinglish model (whisper-base based), less accurate"},
-    "tiny": {"repo": "Systran/faster-whisper-tiny", "mb": 75, "license": "MIT", "note": "tests only"},
-    "small": {"repo": "Systran/faster-whisper-small", "mb": 484, "license": "MIT", "note": "stock Whisper, CPU"},
-    "medium": {"repo": "Systran/faster-whisper-medium", "mb": 1530, "license": "MIT", "note": "slower CPU option"},
-    "large-v2": {"repo": "Systran/faster-whisper-large-v2", "mb": 3090, "license": "MIT", "note": "GPU, fewer hallucinations on some audio"},
-    "large-v3": {"repo": "Systran/faster-whisper-large-v3", "mb": 3090, "license": "MIT", "note": "stock Whisper, writes Hindi in Devanagari (romanized after)"},
-    "large-v3-turbo": {"repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo", "mb": 1620, "license": "MIT", "note": "GPU, about 3x faster, a bit weaker on Hindi"},
+    # stock models, each pinned to the commit that was checked (19 Nov 2026)
+    "tiny": {"repo": "Systran/faster-whisper-tiny", "revision": "d90ca5fe260221311c53c58e660288d3deb8d356",
+             "mb": 75, "license": "MIT", "note": "tests only"},
+    "small": {"repo": "Systran/faster-whisper-small", "revision": "536b0662742c02347bc0e980a01041f333bce120",
+              "mb": 484, "license": "MIT", "note": "stock Whisper, CPU"},
+    "medium": {"repo": "Systran/faster-whisper-medium", "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+               "mb": 1530, "license": "MIT", "note": "slower CPU option"},
+    "large-v2": {"repo": "Systran/faster-whisper-large-v2", "revision": "f0fe81560cb8b68660e564f55dd99207059c092e",
+                 "mb": 3090, "license": "MIT", "note": "GPU, fewer hallucinations on some audio"},
+    "large-v3": {"repo": "Systran/faster-whisper-large-v3", "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+                 "mb": 3090, "license": "MIT", "note": "stock Whisper, writes Hindi in Devanagari (romanized after)"},
+    # moved from mobiuslabsgmbh; model files unchanged since Oct 2024, later commits only touched the README
+    "large-v3-turbo": {"repo": "dropbox-dash/faster-whisper-large-v3-turbo",
+                       "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+                       "mb": 1620, "license": "MIT", "note": "GPU, about 3x faster, a bit weaker on Hindi"},
 }
 
 TAGGER = {
@@ -31,6 +41,9 @@ TAGGER = {
                "sherpa-onnx-ced-mini-audio-tagging-2024-04-19.tar.bz2",
         "dir": "sherpa-onnx-ced-mini-audio-tagging-2024-04-19",
         "mb": 48, "license": "Apache-2.0",
+        # the release has no published checksum, so the files ClipSift uses are checked after unpacking
+        "sha256": {"model.int8.onnx": "ff29f39f9fbe637f72535160e9d006d61d872fdab0fce838672265b9b38cf946",
+                   "class_labels_indices.csv": "cdd1049833c4b86127c2773ac0d14a2754b6a6d0d1798002ed5c66e699708429"},
     },
 }
 
@@ -72,11 +85,28 @@ def download_whisper(models_dir: Path, name: str) -> Path:
     from huggingface_hub import snapshot_download
     target = whisper_dir(models_dir, name)
     target.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_download(WHISPER[name]["repo"], local_dir=str(target),
+    snapshot_download(WHISPER[name]["repo"], revision=WHISPER[name]["revision"], local_dir=str(target),
                       allow_patterns=["*.bin", "*.json", "*.txt", "vocabulary.*"])
     if not whisper_ready(models_dir, name):
         raise RuntimeError(f"download of {name} looks incomplete")
     return target
+
+
+def sha256_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def unpack(archive: Path, dest: Path) -> None:
+    """Plain files and folders only, and nothing outside dest: the 'data' filter refuses absolute paths
+    (including Windows drive paths like C:/...), '..', links and device files."""
+    with tarfile.open(archive, "r:*") as tf:
+        tf.extractall(dest, members=[m for m in tf.getmembers() if m.isfile() or m.isdir()], filter="data")
 
 
 def download_tagger(models_dir: Path, name: str = "ced-mini") -> Path:
@@ -87,11 +117,11 @@ def download_tagger(models_dir: Path, name: str = "ced-mini") -> Path:
         arc = Path(tmp) / "m.tar.bz2"
         with urllib.request.urlopen(info["url"], timeout=60) as r, open(arc, "wb") as f:
             shutil.copyfileobj(r, f, 1 << 20)
-        with tarfile.open(arc, "r:bz2") as tf:
-            safe = [m for m in tf.getmembers()
-                    if not (m.name.startswith("/") or ".." in Path(m.name).parts) and (m.isfile() or m.isdir())]
-            tf.extractall(tmp, members=safe)
+        unpack(arc, Path(tmp))
         src = Path(tmp) / info["dir"]
+        for fname, want in info["sha256"].items():
+            if sha256_file(src / fname) != want:
+                raise RuntimeError(f"{fname} from the {name} download does not match its pinned checksum; not using it")
         dst = root / info["dir"]
         if dst.exists():
             shutil.rmtree(dst)

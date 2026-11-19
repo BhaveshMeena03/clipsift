@@ -1,11 +1,11 @@
 import logging
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from .config import IS_WINDOWS
+from .util import find_on_path
 
 log = logging.getLogger(__name__)
 _dll_done = False
@@ -36,7 +36,7 @@ def setup_cuda_dlls() -> list[str]:
 
 
 def nvidia_smi() -> list[dict]:
-    exe = shutil.which("nvidia-smi")
+    exe = find_on_path("nvidia-smi")
     if not exe and IS_WINDOWS:
         cand = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "nvidia-smi.exe"
         exe = str(cand) if cand.is_file() else None

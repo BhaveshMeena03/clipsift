@@ -1,7 +1,9 @@
 """Local API + UI. Every route is a thin layer over the DB and job queue; heavy work runs in the worker."""
 import asyncio
 import logging
+import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -21,10 +23,11 @@ from ..media.disk import free_bytes
 from ..media.probe import ProbeError, probe
 from ..media.tracks import ROLES
 from ..util import dir_size, human_bytes
-from .security import LocalOnly
+from .security import LocalOnly, load_token, sign
 
 log = logging.getLogger("clipsift.server")
 WEB = PKG_DIR / "web"
+GSI_PORT = 8765  # what the CS2/Dota config files point at
 CAND_STATUSES = {"new", "accepted", "rejected", "exported"}
 EDIT_KEYS = {"start", "end", "hook", "hook_seconds", "captions_on", "censor_on", "gameplay_mode", "pan", "facecam_h",
              "facecam_off", "caption_overrides", "caption_y", "auto_insets"}
@@ -45,7 +48,8 @@ def create_app(paths: Paths, port_ref: dict | None = None, token: str | None = N
 
     app = FastAPI(title="ClipSift", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
-    app.add_middleware(LocalOnly, port_ref=port_ref, token=token or _load_token(paths))
+    token = token or load_token(paths.home)
+    app.add_middleware(LocalOnly, port_ref=port_ref, token=token)
     app.state.db = db
     app.state.paths = paths
     st = db.settings()
@@ -66,8 +70,12 @@ def create_app(paths: Paths, port_ref: dict | None = None, token: str | None = N
     # ---------- state / system ----------
 
     @app.get("/api/ping")
-    def ping():
-        return {"app": "clipsift", "version": __version__}
+    def ping(nonce: str = Query("", max_length=64)):
+        # the signed nonce lets a second launch tell this ClipSift from any other program on the port
+        out = {"app": "clipsift", "version": __version__}
+        if nonce:
+            out["proof"] = sign(token, "ping:" + nonce)
+        return out
 
     @app.get("/api/state")
     def state():
@@ -100,6 +108,9 @@ def create_app(paths: Paths, port_ref: dict | None = None, token: str | None = N
                         "ready": models.whisper_ready(paths.models, k)} for k, v in models.WHISPER.items()],
             "tagger": {"ready": models.tagger_ready(paths.models), **models.TAGGER["ced-mini"]},
         })
+        if port_ref.get("port") not in (None, 0, GSI_PORT):
+            info["port_warning"] = (f"Port {GSI_PORT} is used by another program, so CS2/Dota event feeds go to it, "
+                                    "not ClipSift. Close that program and restart ClipSift.")
         return info
 
     @app.get("/api/games")
@@ -123,7 +134,11 @@ def create_app(paths: Paths, port_ref: dict | None = None, token: str | None = N
                 raise HTTPException(400, f"unknown setting {k}")
             if k in SECRET_SETTINGS and v == "set":
                 continue
-            clean[k] = v
+            if k == "gsi_token":
+                if v:
+                    raise HTTPException(400, "gsi_token is made by ClipSift and cannot be set")
+                continue
+            clean[k] = clean_setting(k, v)
         if "export_dir" in clean and clean["export_dir"]:
             d = Path(clean["export_dir"]).expanduser()
             try:
@@ -164,7 +179,35 @@ def create_app(paths: Paths, port_ref: dict | None = None, token: str | None = N
         out = dict(data)
         out["facecam"] = rect(data.get("facecam"))
         out["gameplay"] = rect(data.get("gameplay"))
-        out["hud_insets"] = [dict(i, src=rect(i.get("src"))) for i in data.get("hud_insets") or [] if i.get("src")]
+        insets = data.get("hud_insets") or []
+        if not isinstance(insets, list) or not all(isinstance(i, dict) for i in insets):
+            raise HTTPException(400, "hud_insets must be a list")
+        out["hud_insets"] = []
+        for i in insets:
+            if not i.get("src"):
+                continue
+            pos = i.get("pos", "tr")
+            if pos not in ("tr", "tl", "br", "bl", "tc") or not _is_num(i.get("scale", 0.32)):
+                raise HTTPException(400, "inset position or size is not valid")
+            out["hud_insets"].append({"src": rect(i["src"]), "pos": pos,
+                                      "scale": min(0.6, max(0.15, float(i.get("scale", 0.32))))})
+        brand = data.get("brand") or {}
+        if not isinstance(brand, dict):
+            raise HTTPException(400, "brand must be an object")
+        out["brand"] = {}
+        if not isinstance(brand.get("text", ""), str) or len(brand.get("text", "")) > 80:
+            raise HTTPException(400, "brand text must be short text")
+        out["brand"]["text"] = brand.get("text", "")
+        for key in ("color", "text_color"):
+            if brand.get(key):
+                if not (isinstance(brand[key], str) and re.fullmatch(r"#[0-9a-fA-F]{6}", brand[key])):
+                    raise HTTPException(400, f"brand {key} must look like #1a2b3c")
+                out["brand"][key] = brand[key]
+        if brand.get("logo"):
+            logo = Path(str(brand["logo"]))
+            if not logo.is_absolute() or not logo.is_file() or logo.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+                raise HTTPException(400, "brand logo must be an existing .png, .jpg or .webp file")
+            out["brand"]["logo"] = str(logo)
         hr = {}
         for g, regs in (data.get("hud_regions") or {}).items():
             hr[g] = {k: rect(v) for k, v in regs.items() if k in ("killfeed", "banner", "reward") and v}
@@ -641,23 +684,70 @@ def create_app(paths: Paths, port_ref: dict | None = None, token: str | None = N
     return app
 
 
-def _load_token(paths: Paths) -> str:
-    """Random once per install, so an open window survives an app restart."""
-    import secrets
-    f = paths.home / "server.token"
-    try:
-        tok = f.read_text(encoding="utf-8").strip()
-        if len(tok) >= 32:
-            return tok
-    except OSError:
-        pass
-    tok = secrets.token_urlsafe(32)
-    f.write_text(tok, encoding="utf-8")
-    try:
-        os.chmod(f, 0o600)
-    except OSError:
-        pass
-    return tok
+SETTING_CHOICES = {
+    "language_mode": {"mixed", "en", "hi", "auto"}, "asr_device": {"auto", "cuda", "cpu"},
+    "visual_scan": {"auto", "keyframes", "1fps", "off"}, "encoder": {"auto", "nvenc", "amf", "qsv", "x264"},
+    "export_quality": {"max", "fast"}, "download_quality": {"best", "1080", "720"},
+    "asr_model_gpu": set(models.WHISPER), "asr_model_cpu": set(models.WHISPER),
+}
+SETTING_RANGES = {
+    "max_candidates": (5, 200), "min_clip_s": (5, 120), "max_clip_s": (10, 180), "quiet_samples_per_hour": (0, 60),
+    "caption_words_max": (1, 8), "caption_y": (0.3, 0.9), "vertical_caption_y": (0.3, 0.9), "hook_y": (0.05, 0.9),
+    "vertical_hook_y": (0.05, 0.9), "hook_seconds": (0, 60), "asr_batch_size": (0, 64),
+}
+TOOL_SETTINGS = {"ffmpeg_path": "ffmpeg", "ffprobe_path": "ffprobe", "deno_path": "deno"}
+
+
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def clean_setting(k: str, v):
+    """Every setting keeps the type of its default, enums stay in their list and numbers in range, so a
+    setting can never smuggle markup into the page or point ClipSift at an arbitrary program."""
+    default = DEFAULT_SETTINGS[k]
+
+    def bad(why: str):
+        raise HTTPException(400, f"{k}: {why}")
+
+    if k in TOOL_SETTINGS:
+        if not isinstance(v, str):
+            bad("must be a path")
+        if v:
+            p = Path(v)
+            exe = TOOL_SETTINGS[k] + (".exe" if IS_WINDOWS else "")
+            if not p.is_absolute() or not p.is_file() or p.name.lower() != exe:
+                bad(f"must be the full path of an existing {exe}")
+        return v
+    if k == "pref_duration":
+        if v is not None and not isinstance(v, dict):
+            bad("must be empty or a duration preference")
+        return v
+    if k == "pref_category_weights":
+        if not isinstance(v, dict) or not all(isinstance(a, str) and _is_num(b) for a, b in v.items()):
+            bad("must map categories to numbers")
+        return v
+    if isinstance(default, bool):
+        if not isinstance(v, bool):
+            bad("must be true or false")
+        return v
+    if isinstance(default, (int, float)):
+        if not _is_num(v):
+            bad("must be a number")
+        lo, hi = SETTING_RANGES.get(k, (v, v))
+        v = min(hi, max(lo, v))
+        return int(round(v)) if isinstance(default, int) else float(v)
+    if isinstance(default, list):
+        if not isinstance(v, list) or len(v) > 200 or not all(isinstance(x, str) and len(x) <= 100 for x in v):
+            bad("must be a list of short words")
+        return v
+    if not isinstance(v, str) or len(v) > 2000:
+        bad("must be text")
+    if k in SETTING_CHOICES and v not in SETTING_CHOICES[k]:
+        bad(f"must be one of {', '.join(sorted(SETTING_CHOICES[k]))}")
+    if k == "instagram_graph_user_id" and v and not v.isdigit():
+        bad("must be digits")
+    return v
 
 
 def _recorded_at(p: Path, info) -> float | None:

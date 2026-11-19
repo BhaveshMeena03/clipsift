@@ -12,6 +12,7 @@ from clipsift.analysis.candidates import (
 )
 from clipsift.detect import gsi, hud
 from clipsift.media.tracks import plan_tracks
+from clipsift.pipeline.process import dedupe_events
 from clipsift.pipeline.verify import decide
 from clipsift.text.hooks import hook_options, sentences
 
@@ -149,6 +150,26 @@ def test_killfeed_kill_death_and_ocr_noise():
     names = ["fortysevenfrags"]
     rows = hud.killfeed_rows(_items([["f0rtysevenfrags", "Raze_main"], ["enemy", "fortysevenfrag"], ["enemyA", "enemyB"]]), names)
     assert [r["kind"] for r in rows] == ["kill", "death", "feed"]
+
+
+def test_kill_row_survives_ocr_flicker():
+    # found on Windows: the third row read "sova123", then "soval23" a few frames later, and counted as a 4th kill
+    names = ["fortysevenfrags"]
+    ft = hud.FeedTracker(ttl=9)
+    first = hud.killfeed_rows(_items([["fortysevenfrags", "sova123"]]), names)
+    later = hud.killfeed_rows(_items([["fortysevenfrags", "soval23"]]), names)
+    assert len(ft.update(126, first)) == 1
+    assert ft.update(131, later) == []
+    events = [{**first[0], "t": 126.0, "src": "killfeed"}, {**later[0], "t": 131.0, "src": "killfeed"}]
+    assert len(dedupe_events(events)) == 1
+
+
+def test_different_victims_are_different_kills():
+    names = ["fortysevenfrags"]
+    a = hud.killfeed_rows(_items([["fortysevenfrags", "player1"]]), names)
+    b = hud.killfeed_rows(_items([["fortysevenfrags", "player2"]]), names)
+    ft = hud.FeedTracker(ttl=9)
+    assert len(ft.update(10, a)) == 1 and len(ft.update(11, b)) == 1
 
 
 def test_name_match_rejects_short_and_different():

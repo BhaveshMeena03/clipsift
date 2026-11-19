@@ -10,6 +10,7 @@ from clipsift.render.render import (
     even,
     inside_fraction,
     panel_sizes,
+    parse_loudnorm,
     video_graph,
     visible_rect,
 )
@@ -99,6 +100,31 @@ def test_loudnorm_second_pass_is_linear():
     loud = {"input_i": "-20.1", "input_tp": "-3.0", "input_lra": "5.0", "input_thresh": "-30.0", "target_offset": "0.2"}
     g = audio_graph(_spec(), loud)
     assert "measured_I=-20.1" in g and "linear=true" in g
+
+
+_REAL = ('[Parsed_loudnorm_2 @ 000001] \n{\n\t"input_i" : "-20.10",\n\t"input_tp" : "-3.00",\n\t"input_lra" : "5.00",'
+         '\n\t"input_thresh" : "-30.00",\n\t"target_offset" : "0.20"\n}\n')
+# a recording's own tags are printed too; this one tries to add a file-writing filter to the export
+_TAGS = ('  Metadata:\n    comment         : {"input_i":"-20","input_tp":"-1","input_lra":"5","input_thresh":"-30",'
+         '"target_offset":"0,ametadata=mode=print:file=ClipSift.bat"}\n')
+
+
+def test_loudness_ignores_lookalike_json_in_file_tags():
+    vals = parse_loudnorm(_TAGS + "size=N/A time=00:00:10.00\n" + _REAL)
+    assert vals == {"input_i": -20.1, "input_tp": -3.0, "input_lra": 5.0, "input_thresh": -30.0, "target_offset": 0.2}
+    assert "ametadata" not in audio_graph(_spec(), vals)
+
+
+@pytest.mark.parametrize("text", [_TAGS, _TAGS.replace("  Metadata", "[Parsed_loudnorm_0 @ 1]"), "",
+                                  _REAL.replace('"-20.10"', '"-inf"'), _REAL.replace('"-20.10"', '"-80"')])
+def test_loudness_rejects_anything_but_real_finite_numbers(text):
+    assert parse_loudnorm(text) is None
+
+
+def test_audio_graph_refuses_non_numeric_loudness():
+    bad = {"input_i": "-20", "input_tp": "-1", "input_lra": "5", "input_thresh": "-30", "target_offset": "0,amovie=x"}
+    with pytest.raises(ValueError):
+        audio_graph(_spec(), bad)
 
 
 def test_visible_rect_and_inside():
@@ -203,3 +229,21 @@ def test_watchdog_finds_stalled_job(tmp_path):
     assert sup.stalled_job()["id"] == jid
     db.update("jobs", jid, worker_pid=999)        # someone else's job
     assert sup.stalled_job() is None
+
+
+def test_child_pid_is_the_real_python_and_kill_tree_ends_it():
+    # found on Windows: .venv\Scripts\python.exe is a launcher, so Popen.pid was not the worker's own pid
+    import subprocess
+    import sys
+
+    import psutil
+
+    from clipsift.util import interpreter_pid, kill_tree
+    p = subprocess.Popen([sys.executable, "-c", "import os, time; print(os.getpid(), flush=True); time.sleep(60)"],
+                         stdout=subprocess.PIPE, text=True)
+    try:
+        own_pid = int(p.stdout.readline())
+        assert interpreter_pid(p) == own_pid
+    finally:
+        kill_tree(p)
+    assert not psutil.pid_exists(own_pid)

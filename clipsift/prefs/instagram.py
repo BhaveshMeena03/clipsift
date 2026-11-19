@@ -8,6 +8,7 @@ Best effort only:
 ClipSift never logs in to Instagram or works around its login wall."""
 import json
 import logging
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -72,12 +73,33 @@ def _ts(v):
     return parse_date(v)
 
 
+_POST_PATH = re.compile(r"^/(?:[A-Za-z0-9_.]+/)?(p|reel|reels|tv)/([A-Za-z0-9_-]{5,40})/?$")
+
+
+def post_url(url: str) -> str:
+    """The canonical https://www.instagram.com/<kind>/<code>/ for a pasted post link. Anything that is not
+    a post on instagram.com is refused, so the downloader can never be pointed at another site."""
+    url = url.strip()
+    if "://" not in url:
+        url = "https://" + url  # links copied from the app often have no scheme
+    try:
+        u = urllib.parse.urlsplit(url)
+        host = (u.hostname or "").lower()
+    except ValueError:
+        host, u = "", None
+    m = _POST_PATH.match(u.path) if u and u.scheme in ("http", "https") and host in ("instagram.com", "www.instagram.com") else None
+    if not m or u.username or u.password or u.port not in (None, 80, 443):
+        raise InstagramError("Not an Instagram post link.")
+    kind = "reel" if m.group(1) == "reels" else m.group(1)
+    return f"https://www.instagram.com/{kind}/{m.group(2)}/"
+
+
 def public_post_meta(url: str) -> dict:
     """No login, no cookies. Fails cleanly when Instagram wants a login."""
     import yt_dlp
-    if "instagram.com/" not in url:
-        raise InstagramError("Not an Instagram link.")
-    params = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True, "socket_timeout": 20}
+    url = post_url(url)
+    params = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True, "socket_timeout": 20,
+              "allowed_extractors": ["instagram"]}
     try:
         with yt_dlp.YoutubeDL(params) as ydl:
             info = ydl.extract_info(url, download=False)

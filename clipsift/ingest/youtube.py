@@ -2,14 +2,13 @@
 for private, members-only, age-gated or region-locked videos."""
 import logging
 import re
-import shutil
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from ..config import IS_WINDOWS
 from ..media.disk import ensure_space
-from ..util import Cancelled, fmt_ts, human_bytes
+from ..util import Cancelled, find_on_path, fmt_ts, human_bytes
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ def deno_path(paths, settings) -> str | None:
     for cand in (paths.tools / "deno" / exe, paths.tools / exe):
         if cand.is_file():
             return str(cand)
-    return shutil.which("deno")
+    return find_on_path("deno")
 
 
 def base_params(paths, settings) -> dict:
